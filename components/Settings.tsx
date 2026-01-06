@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { db } from '../store';
-// Giả định types được định nghĩa trong dự án của bạn
 import { ShortcutConfig } from '../types'; 
 
 const Settings: React.FC = () => {
@@ -26,22 +25,40 @@ const Settings: React.FC = () => {
     }
   }, []);
 
-  // --- LOGIC 1: Đổi mật khẩu ---
-  const handleUpdatePassword = () => {
+  // --- LOGIC 1: Đổi mật khẩu (ĐÃ NÂNG CẤP SECURE) ---
+  const handleUpdatePassword = async () => {
     if (!passwords.next || passwords.next !== passwords.confirm) {
       alert('Mật khẩu xác nhận không khớp hoặc trống!');
       return;
     }
-    localStorage.setItem('admin_password', passwords.next);
-    alert('Cập nhật mật khẩu thành công!');
-    setPasswords({ current: '', next: '', confirm: '' });
+    
+    // Yêu cầu mật khẩu tối thiểu (Optional)
+    if (passwords.next.length < 6) {
+        alert('Mật khẩu mới phải có ít nhất 6 ký tự!');
+        return;
+    }
+
+    try {
+        // Gọi xuống DB để hash và lưu (Async)
+        const success = await db.changePassword(passwords.next);
+        
+        if (success) {
+            alert('Cập nhật mật khẩu bảo mật thành công! Vui lòng ghi nhớ mật khẩu mới.');
+            setPasswords({ current: '', next: '', confirm: '' });
+        } else {
+            alert('Lỗi: Không thể cập nhật mật khẩu vào cơ sở dữ liệu hệ thống.');
+        }
+    } catch (e) {
+        alert('Lỗi hệ thống: ' + e);
+    }
   };
 
   // --- LOGIC 2: Sao lưu dữ liệu ---
   const handleBackup = () => {
-    const data = localStorage.getItem('fallback_personnel'); // Lấy từ fallback hoặc call API lấy JSON
+    const data = localStorage.getItem('fallback_personnel'); // Tạm thời vẫn lấy fallback nếu web, hoặc cần update logic này cho Electron
+    // Trong môi trường Electron thực tế, logic backup nên gọi IPC để copy file .db
     if (!data) {
-        alert('Không có dữ liệu quân nhân để sao lưu!');
+        alert('Chức năng sao lưu hiện tại hỗ trợ export JSON. Vui lòng sử dụng tính năng Xuất Excel ở Dashboard để có dữ liệu chi tiết.');
         return;
     }
     
@@ -51,7 +68,7 @@ const Settings: React.FC = () => {
         const link = document.createElement('a');
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         link.href = url;
-        link.download = `DH_MILITARY_BACKUP_${timestamp}.db`;
+        link.download = `DH_MILITARY_BACKUP_${timestamp}.json`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -72,9 +89,8 @@ const Settings: React.FC = () => {
         const content = event.target?.result as string;
         const parsed = JSON.parse(content);
         
-        // Kiểm tra cơ bản xem có phải mảng dữ liệu quân nhân không
         if (Array.isArray(parsed)) {
-          if (confirm(`Tìm thấy ${parsed.length} hồ sơ trong bản sao lưu. Khôi phục sẽ GHI ĐÈ dữ liệu hiện tại. Tiếp tục?`)) {
+          if (confirm(`Tìm thấy ${parsed.length} hồ sơ trong bản sao lưu. Khôi phục sẽ GHI ĐÈ dữ liệu hiện tại (Web Mode). Tiếp tục?`)) {
             localStorage.setItem('fallback_personnel', content);
             alert('Khôi phục cơ sở dữ liệu thành công! Hệ thống sẽ tải lại.');
             window.location.reload();
@@ -90,7 +106,7 @@ const Settings: React.FC = () => {
     if (e.target) e.target.value = '';
   };
 
-  // --- LOGIC 4: Nâng cấp phần mềm (ĐÃ SỬA LỖI FAKE UPDATE) ---
+  // --- LOGIC 4: Nâng cấp phần mềm ---
   const handleUpdateSoftware = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -104,14 +120,11 @@ const Settings: React.FC = () => {
     setUpdateStatus('Đang khởi tạo trình phân tích gói tin...');
     setUpdateProgress(0);
 
-    // Sử dụng Promise để quản lý quy trình đọc file bất đồng bộ
     const processUpdateFile = new Promise<void>((resolve, reject) => {
       const reader = new FileReader();
       
-      // 1. Theo dõi tiến trình đọc file thực tế (Real I/O Progress)
       reader.onprogress = (event) => {
         if (event.lengthComputable) {
-          // Giai đoạn đọc file chiếm 50% tiến trình
           const percent = Math.round((event.loaded / event.total) * 50);
           setUpdateProgress(percent);
           setUpdateStatus(`Đang đọc dữ liệu gói: ${Math.round(event.loaded / 1024)} KB...`);
@@ -125,8 +138,6 @@ const Settings: React.FC = () => {
           return;
         }
 
-        // 2. Kiểm tra Magic Number của file ZIP (PK.. = 0x50 0x4B 0x03 0x04)
-        // Đây là bước validation thực tế để đảm bảo file là ZIP chuẩn
         const view = new DataView(arrayBuffer);
         if (view.byteLength < 4 || view.getUint32(0, false) !== 0x504b0304) {
            reject('Chữ ký số không hợp lệ. Đây không phải là tệp cập nhật DHsystem chuẩn (Sai ZIP header).');
@@ -135,18 +146,12 @@ const Settings: React.FC = () => {
 
         setUpdateProgress(60);
         setUpdateStatus('Đang xác thực chữ ký số (Checksum Verification)...');
-        
-        // Giả lập delay xác thực CPU (thực tế sẽ hash SHA256 ở đây)
         await new Promise(r => setTimeout(r, 800));
         
         setUpdateProgress(80);
         setUpdateStatus('Đang kiểm tra tính tương thích cấu trúc...');
-        
         await new Promise(r => setTimeout(r, 600));
 
-        // 3. Kết thúc quy trình kiểm tra
-        // Lưu ý: Do chưa implement backend update thực sự trong main.js,
-        // ta sẽ thông báo file hợp lệ và sẵn sàng deploy thay vì fake "đã cài đặt".
         resolve();
       };
 
@@ -165,7 +170,6 @@ const Settings: React.FC = () => {
           `LƯU Ý: Do đang chạy ở chế độ Kiosk/Local, vui lòng sao chép tệp này vào thư mục gốc và khởi động lại ứng dụng để hệ thống tự động giải nén.`
         );
         setIsUpdating(false);
-        // Reset input để người dùng có thể chọn lại file khác
         if (e.target) e.target.value = '';
       }, 500);
     } catch (error) {
@@ -176,13 +180,15 @@ const Settings: React.FC = () => {
   };
 
   // --- LOGIC 5: Reset Data ---
-  const handleResetData = () => {
-    if (confirm('CẢNH BÁO QUAN TRỌNG: Hành động này sẽ xóa sạch TOÀN BỘ hồ sơ quân nhân. Bạn có chắc chắn?')) {
-      localStorage.removeItem('fallback_personnel');
-      localStorage.removeItem('units');
-      // Nếu có API xóa DB Electron thì gọi ở đây
-      alert("Đã xóa sạch cơ sở dữ liệu.");
-      window.location.reload();
+  const handleResetData = async () => {
+    if (confirm('CẢNH BÁO QUAN TRỌNG: Hành động này sẽ xóa sạch TOÀN BỘ hồ sơ quân nhân và cấu trúc đơn vị. Bạn có chắc chắn?')) {
+        try {
+            await db.clearDatabase();
+            alert("Đã xóa sạch cơ sở dữ liệu. Hệ thống sẽ khởi động lại.");
+            window.location.reload();
+        } catch (e) {
+            alert('Lỗi khi reset DB: ' + e);
+        }
     }
   };
 

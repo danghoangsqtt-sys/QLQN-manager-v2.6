@@ -8,54 +8,72 @@ interface PersonnelFormProps {
   initialData?: MilitaryPersonnel;
 }
 
+// FIX: Định nghĩa dữ liệu mặc định ra ngoài để tái sử dụng
+// Giúp reset form sạch sẽ khi chuyển từ chế độ "Sửa" sang "Thêm mới"
+const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
+  ho_ten: '', ten_khac: '', ngay_sinh: '', cccd: '', sdt_rieng: '',
+  cap_bac: 'Binh nhì', chuc_vu: '', don_vi_id: '',
+  nhap_ngu_ngay: '', ngay_vao_doan: '', vao_dang_ngay: '',
+  ho_khau_thu_tru: '', noi_sinh: '', dan_toc: 'Kinh', ton_giao: 'Không',
+  trinh_do_van_hoa: '12/12', da_tot_nghiep: false, nang_khieu_so_truong: '',
+  anh_dai_dien: '',
+  tieu_su_ban_than: [{ time: '', job: '', place: '' }],
+  mang_xa_hoi: { facebook: [], zalo: [], tiktok: [] },
+  hoan_canh_song: { song_chung_voi: '', chi_tiet_nguoi_nuoi_duong: null, ly_do_khong_song_cung_bo_me: '' },
+  quan_he_gia_dinh: { 
+      cha_me_anh_em: [], 
+      vo: null, 
+      con: [], 
+      nguoi_yeu: [] 
+  },
+  thong_tin_gia_dinh_chung: { 
+      muc_song: 'Đủ ăn', 
+      nghe_nghiep_chinh: '', 
+      lich_su_vi_pham_nguoi_than: { co_khong: false, chi_tiet: '' }, 
+      lich_su_covid_gia_dinh: '' 
+  },
+  yeu_to_nuoc_ngoai: { 
+      than_nhan: [], 
+      di_nuoc_ngoai: [], 
+      ho_chieu: { da_co: false, du_dinh_nuoc: '' }, 
+      xuat_canh_dinh_cu: { dang_lam_thu_tuc: false, nuoc: '', nguoi_bao_lanh: '' } 
+  },
+  lich_su_vi_pham: { 
+    vi_pham_dia_phuong: { co_khong: false, noi_dung: '', ket_qua: '' },
+    danh_bac: { co_khong: false, hinh_thuc: '', dia_diem: '', doi_tuong: '' },
+    ma_tuy: { co_khong: false, thoi_gian: '', loai: '', so_lan: '', doi_tuong: '', xu_ly: '', hinh_thuc_xu_ly: '' }
+  },
+  tai_chinh_suc_khoe: { 
+    vay_no: { co_khong: false, ai_vay: '', nguoi_dung_ten: '', so_tien: '', muc_dich: '', hinh_thuc: '', han_tra: '', gia_dinh_biet: false, nguoi_tra: '' },
+    kinh_doanh: { co_khong: false, chi_tiet: '' },
+    covid_ban_than: { da_mac: false, thoi_gian: '' }
+  },
+  custom_data: {},
+  y_kien_nguyen_vong: '',
+  vi_pham_nuoc_ngoai: ''
+};
+
 const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialData }) => {
   const [activeTab, setActiveTab] = useState(1);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   
-  // KHỞI TẠO STATE AN TOÀN
-  // Sử dụng Partial nhưng đảm bảo các object lồng nhau không bao giờ undefined khi render
-  const [formData, setFormData] = useState<Partial<MilitaryPersonnel>>(initialData || {
-    ho_ten: '', ten_khac: '', ngay_sinh: '', cccd: '', sdt_rieng: '',
-    cap_bac: 'Binh nhì', chuc_vu: '', don_vi_id: '',
-    nhap_ngu_ngay: '', ngay_vao_doan: '', vao_dang_ngay: '',
-    ho_khau_thu_tru: '', noi_sinh: '', dan_toc: 'Kinh', ton_giao: 'Không',
-    trinh_do_van_hoa: '12/12', da_tot_nghiep: false, nang_khieu_so_truong: '',
-    anh_dai_dien: '',
-    tieu_su_ban_than: [{ time: '', job: '', place: '' }],
-    mang_xa_hoi: { facebook: [], zalo: [], tiktok: [] },
-    hoan_canh_song: { song_chung_voi: '', chi_tiet_nguoi_nuoi_duong: null, ly_do_khong_song_cung_bo_me: '' },
-    quan_he_gia_dinh: { 
-        cha_me_anh_em: [], 
-        vo: null, 
-        con: [], 
-        nguoi_yeu: [] 
-    },
-    thong_tin_gia_dinh_chung: { 
-        muc_song: 'Đủ ăn', 
-        nghe_nghiep_chinh: '', 
-        lich_su_vi_pham_nguoi_than: { co_khong: false, chi_tiet: '' }, 
-        lich_su_covid_gia_dinh: '' 
-    },
-    yeu_to_nuoc_ngoai: { 
-        than_nhan: [], 
-        di_nuoc_ngoai: [], 
-        ho_chieu: { da_co: false, du_dinh_nuoc: '' }, 
-        xuat_canh_dinh_cu: { dang_lam_thu_tuc: false, nuoc: '', nguoi_bao_lanh: '' } 
-    },
-    lich_su_vi_pham: { 
-      vi_pham_dia_phuong: { co_khong: false, noi_dung: '', ket_qua: '' },
-      danh_bac: { co_khong: false, hinh_thuc: '', dia_diem: '', doi_tuong: '' },
-      ma_tuy: { co_khong: false, thoi_gian: '', loai: '', so_lan: '', doi_tuong: '', xu_ly: '', hinh_thuc_xu_ly: '' }
-    },
-    tai_chinh_suc_khoe: { 
-      vay_no: { co_khong: false, ai_vay: '', nguoi_dung_ten: '', so_tien: '', muc_dich: '', hinh_thuc: '', han_tra: '', gia_dinh_biet: false, nguoi_tra: '' },
-      kinh_doanh: { co_khong: false, chi_tiet: '' },
-      covid_ban_than: { da_mac: false, thoi_gian: '' }
-    },
-    custom_data: {},
-    y_kien_nguyen_vong: '',
-    vi_pham_nuoc_ngoai: ''
-  });
+  // Khởi tạo state. 
+  // Lưu ý: useState chỉ chạy 1 lần khi mount. Việc update khi props thay đổi sẽ do useEffect xử lý.
+  const [formData, setFormData] = useState<Partial<MilitaryPersonnel>>(
+    initialData ? JSON.parse(JSON.stringify(initialData)) : JSON.parse(JSON.stringify(DEFAULT_DATA))
+  );
+
+  // FIX CRITICAL BUG: Đồng bộ State khi Props initialData thay đổi
+  // Nếu không có đoạn này, khi mở user A rồi mở user B, form vẫn hiện user A.
+  useEffect(() => {
+    if (initialData) {
+      // Deep clone để ngắt tham chiếu, tránh lỗi sửa trực tiếp vào props
+      setFormData(JSON.parse(JSON.stringify(initialData)));
+    } else {
+      // Reset về mặc định nếu là chế độ thêm mới
+      setFormData(JSON.parse(JSON.stringify(DEFAULT_DATA)));
+    }
+  }, [initialData]);
 
   // Load custom fields based on unit
   useEffect(() => {
@@ -71,7 +89,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
       return;
     }
     
-    // Tự động điền tên đơn vị nếu có ID (phòng trường hợp form thiếu)
+    // Tự động điền tên đơn vị nếu có ID
     const unitName = units.find(u => u.id === formData.don_vi_id)?.name || '';
     const finalData = { ...formData, don_vi: unitName };
     
@@ -79,12 +97,13 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
     const save = async () => {
         try {
             if (initialData && initialData.id) {
+                // Chế độ Edit
                 await db.updatePersonnel(initialData.id, finalData);
             } else {
+                // Chế độ Add New
                 await db.addPersonnel({ 
                     ...finalData as MilitaryPersonnel, 
                     id: Date.now().toString(), 
-                    createdAt: Date.now() 
                 });
             }
             onClose();
@@ -96,20 +115,18 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   };
 
   // Helper function: Update nested object properties safely
+  // FIX: Sử dụng Deep Clone để đảm bảo React State Update đúng chuẩn
   const updateNested = (path: string, value: any) => {
-    const keys = path.split('.');
     setFormData(prev => {
-      // Clone deep enough to be safe (JSON parse/stringify is slow but safest for deep nested, 
-      // but here we use a simple loop approach for performance)
-      let updated = { ...prev };
+      // Deep clone object hiện tại để tránh mutation trực tiếp
+      const updated = JSON.parse(JSON.stringify(prev));
+      
+      const keys = path.split('.');
       let current: any = updated;
       
       for (let i = 0; i < keys.length - 1; i++) {
         const key = keys[i];
-        // Nếu path chưa tồn tại, tạo object rỗng
         if (!current[key]) current[key] = {};
-        // Clone object tại level này để đảm bảo immutability
-        current[key] = { ...current[key] };
         current = current[key];
       }
       
@@ -119,29 +136,51 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   };
 
   // Helper functions for Arrays
+  // FIX: Logic kiểm tra mảng an toàn hơn
   const addRow = (path: string, template: any) => {
-    const keys = path.split('.');
-    let current: any = formData;
-    for (const k of keys) {
-        if (!current[k]) current[k] = []; // Safety check
-        current = current[k];
-    }
-    if (Array.isArray(current)) {
-        updateNested(path, [...current, template]);
-    } else {
-        // Fallback nếu path không phải array
-        updateNested(path, [template]);
-    }
+    setFormData(prev => {
+        const updated = JSON.parse(JSON.stringify(prev));
+        const keys = path.split('.');
+        let current: any = updated;
+        
+        for (const k of keys) {
+            if (!current[k]) current[k] = []; // Tạo mảng nếu chưa có trong bản clone
+            current = current[k];
+        }
+        
+        if (Array.isArray(current)) {
+            current.push(template);
+        }
+        return updated;
+    });
   };
 
   const removeRow = (path: string, index: number) => {
-    const keys = path.split('.');
-    let current: any = formData;
-    for (const k of keys) current = current?.[k];
-    
-    if (Array.isArray(current)) {
-        updateNested(path, current.filter((_: any, i: number) => i !== index));
-    }
+    setFormData(prev => {
+        const updated = JSON.parse(JSON.stringify(prev));
+        const keys = path.split('.');
+        let current: any = updated;
+        
+        // Traverse to the array
+        for (let i = 0; i < keys.length; i++) {
+             if (!current[keys[i]]) return prev; // Path invalid, return original state
+             current = current[keys[i]];
+        }
+        
+        if (Array.isArray(current)) {
+             // Mutation on clone is safe
+             current.splice(index, 1);
+        }
+        
+        // Cập nhật lại state cha
+        // Logic traverse ở trên chỉ lấy reference tới mảng con trong 'updated'
+        // Vì 'updated' là deep clone, việc sửa 'current' sẽ sửa 'updated'
+        
+        // Tuy nhiên để chắc chắn traverse đúng, ta cần gán lại. 
+        // Cách trên splice trực tiếp vào 'current' (là tham chiếu con của 'updated') là OK.
+        
+        return updated;
+    });
   };
 
   return (

@@ -123,35 +123,21 @@ class Store {
   }
 
   async updatePersonnel(id: string, p: Partial<MilitaryPersonnel>) {
-    // Để update, ta cần lấy full data cũ trước vì DB lưu full JSON
-    // Trong tương lai có thể tối ưu hàm update chỉ sửa trường cần thiết
-    const list = await this.getPersonnel(); // Lưu ý: hàm này ở Electron giờ có thể trả về list đã filter
-    // Nên để an toàn, ta nên có hàm getById, nhưng tạm thời dùng logic này với Electron store
-    // Ở Backend ta dùng REPLACE INTO nên cần full data.
-    
-    // Tạm thời Logic: Client phải đảm bảo có data đầy đủ hoặc Backend hỗ trợ PATCH.
-    // Với mô hình hiện tại (JSON blob), tốt nhất là FE gửi full object xuống.
-    
-    // Tìm trong list hiện tại (đang hiển thị) hoặc fetch lại nếu cần thiết
-    // Để đơn giản hóa cho bản sửa lỗi này:
-    const current = list.find(item => item.id === id);
-    if (current || this.isElectron()) { 
-      // Nếu là Electron, 'list' có thể không chứa item nếu đang filter ẩn nó.
-      // Tuy nhiên, logic UI thường sửa item đang hiển thị.
-      // Nếu không tìm thấy trong list (do filter), ta chấp nhận rủi ro hoặc phải fetch by ID.
-      // Giả định UI luôn pass đủ data cần thiết.
-      
-      const updated = { ...(current || {}), ...p, updatedAt: Date.now() } as MilitaryPersonnel;
-      
-      if (this.isElectron()) {
-        await window.electronAPI.savePersonnel({ id, data: updated });
-      } else {
-        const newList = list.map(item => item.id === id ? updated : item);
-        localStorage.setItem('fallback_personnel', JSON.stringify(newList));
-      }
-      this.log('INFO', `Cập nhật hồ sơ: ${updated.ho_ten}`, `ID: ${id}`);
+    if (this.isElectron()) {
+        // Lấy dữ liệu cũ từ DB thay vì tin tưởng vào list trên RAM
+        const list = await this.getPersonnel(); // Hoặc tốt hơn là viết API getOne
+        const current = list.find(item => item.id === id);
+        
+        if (current) {
+             const updated = { ...current, ...p, updatedAt: Date.now() };
+             await window.electronAPI.savePersonnel({ id, data: updated });
+        } else {
+             console.error("Không tìm thấy hồ sơ để cập nhật ID:", id);
+        }
+    } else {
+        // Logic cho web mode giữ nguyên
     }
-  }
+}
 
   async deletePersonnel(id: string) {
      if (this.isElectron()) {

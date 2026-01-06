@@ -1,228 +1,382 @@
-import React, { useState, useEffect } from 'react';
-import { AppMode, Unit } from './types';
-import Dashboard from './components/Dashboard';
-import PersonnelForm from './components/PersonnelForm';
-import { db } from './store';
+import React, { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { Users, UserPlus, Save, Trash2, Search, Briefcase, MapPin, Phone, Mail, Edit, AlertCircle } from 'lucide-react';
 
-const App: React.FC = () => {
-  const [mode, setMode] = useState<AppMode>(AppMode.LOGIN);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  
-  // State lưu danh sách đơn vị (Dùng cho Kiosk Mode)
-  const [units, setUnits] = useState<Unit[]>([]);
+// --- 1. DEFINITIONS & TYPES (Định nghĩa kiểu dữ liệu) ---
+// Đây là cấu trúc dữ liệu chuẩn cho toàn bộ ứng dụng
+export interface NhanVien {
+  id: string;
+  hoTen: string;
+  ngaySinh: string;
+  chucVu: string;
+  phongBan: string;
+  email: string;
+  soDienThoai: string;
+  trangThai: 'dang_lam_viec' | 'da_nghi_viec' | 'tam_nghi';
+  diaChi: string;
+  avatarUrl?: string; // Optional
+}
 
-  // Hàm tải danh sách đơn vị
-  const loadUnits = async () => {
+// Kiểu dữ liệu cho Context
+interface NhanVienContextType {
+  danhSachNhanVien: NhanVien[];
+  themNhanVien: (nv: NhanVien) => void;
+  suaNhanVien: (nv: NhanVien) => void;
+  xoaNhanVien: (id: string) => void;
+  isLoading: boolean;
+}
+
+// --- 2. STORAGE SERVICE (Dịch vụ lưu trữ Offline) ---
+// Tách biệt logic lưu trữ để dễ quản lý lỗi
+const STORAGE_KEY = 'OFFLINE_HRM_DATA_V1';
+
+const StorageService = {
+  save: (data: NhanVien[]) => {
     try {
-      const data = await db.getUnits();
-      setUnits(data);
-    } catch (e) {
-      console.error("Lỗi tải danh sách đơn vị:", e);
+      const json = JSON.stringify(data);
+      localStorage.setItem(STORAGE_KEY, json);
+    } catch (error) {
+      console.error("Lỗi khi lưu dữ liệu vào LocalStorage:", error);
+      // Có thể thêm thông báo lỗi UI ở đây nếu cần
     }
-  };
+  },
+  load: (): NhanVien[] => {
+    try {
+      const json = localStorage.getItem(STORAGE_KEY);
+      if (!json) return [];
+      return JSON.parse(json);
+    } catch (error) {
+      console.error("Lỗi khi đọc dữ liệu từ LocalStorage:", error);
+      return [];
+    }
+  }
+};
 
-  // Effect: Tải danh sách đơn vị khi khởi động App
+// --- 3. CONTEXT & PROVIDER (Quản lý trạng thái toàn cục) ---
+const NhanVienContext = createContext<NhanVienContextType | undefined>(undefined);
+
+export const NhanVienProvider = ({ children }: { children: ReactNode }) => {
+  const [danhSachNhanVien, setDanhSachNhanVien] = useState<NhanVien[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load dữ liệu khi App khởi động (Chỉ chạy 1 lần)
   useEffect(() => {
-    loadUnits();
+    const data = StorageService.load();
+    // Nếu chưa có dữ liệu, thêm dữ liệu mẫu để test
+    if (data.length === 0) {
+        const sampleData: NhanVien[] = [
+            {
+                id: 'NV001',
+                hoTen: 'Nguyễn Văn A',
+                chucVu: 'Trưởng phòng IT',
+                phongBan: 'Công nghệ thông tin',
+                email: 'vana@example.com',
+                soDienThoai: '0901234567',
+                ngaySinh: '1990-01-01',
+                trangThai: 'dang_lam_viec',
+                diaChi: 'Hà Nội'
+            },
+            {
+                id: 'NV002',
+                hoTen: 'Trần Thị B',
+                chucVu: 'Nhân viên Kế toán',
+                phongBan: 'Tài chính Kế toán',
+                email: 'thib@example.com',
+                soDienThoai: '0909876543',
+                ngaySinh: '1995-05-15',
+                trangThai: 'dang_lam_viec',
+                diaChi: 'TP. Hồ Chí Minh'
+            }
+        ];
+        setDanhSachNhanVien(sampleData);
+        StorageService.save(sampleData);
+    } else {
+        setDanhSachNhanVien(data);
+    }
+    setIsLoading(false);
   }, []);
 
-  // Effect: Tải lại đơn vị khi chuyển sang chế độ Kiosk để đảm bảo dữ liệu mới nhất
+  // Tự động lưu mỗi khi danhSachNhanVien thay đổi
   useEffect(() => {
-    if (mode === AppMode.KIOSK) {
-      loadUnits();
+    if (!isLoading) {
+      StorageService.save(danhSachNhanVien);
     }
-  }, [mode]);
+  }, [danhSachNhanVien, isLoading]);
 
-  const handleCommanderLogin = async () => {
-    if (!password) {
-      setError('Vui lòng nhập mật khẩu!');
-      return;
-    }
+  const themNhanVien = (nv: NhanVien) => {
+    setDanhSachNhanVien(prev => [nv, ...prev]);
+  };
 
-    setIsLoading(true);
-    setError('');
+  const suaNhanVien = (nvCapNhat: NhanVien) => {
+    setDanhSachNhanVien(prev => prev.map(nv => nv.id === nvCapNhat.id ? nvCapNhat : nv));
+  };
 
-    try {
-      // GỌI API ĐĂNG NHẬP AN TOÀN TỪ STORE -> PRELOAD -> MAIN (HASH CHECK)
-      const isValid = await db.login(password);
-      
-      if (isValid) {
-        setMode(AppMode.COMMANDER);
-        setShowLoginModal(false);
-        setPassword(''); // Xóa mật khẩu khỏi state sau khi đăng nhập thành công
-        setError('');
-      } else {
-        setError('Mật khẩu không đúng, vui lòng thử lại.');
-      }
-    } catch (e) {
-      console.error(e);
-      setError('Lỗi hệ thống xác thực. Vui lòng kiểm tra Logs.');
-    } finally {
-      setIsLoading(false);
+  const xoaNhanVien = (id: string) => {
+    if(window.confirm("Bạn có chắc chắn muốn xóa nhân viên này? Hành động này không thể hoàn tác.")){
+        setDanhSachNhanVien(prev => prev.filter(nv => nv.id !== id));
     }
   };
 
-  if (mode === AppMode.LOGIN) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-[#0f2e1f] relative overflow-hidden">
-        {/* Background Animation Effect */}
-        <div className="absolute top-0 left-0 w-full h-full opacity-30 animate-pulse" style={{ backgroundImage: 'radial-gradient(at 10% 10%, rgba(212, 175, 55, 0.2) 0px, transparent 50%), radial-gradient(at 90% 90%, rgba(20, 69, 47, 0.8) 0px, transparent 50%)' }}></div>
-        
-        <div className="flex w-full max-w-4xl h-[550px] glass-panel rounded-3xl shadow-2xl overflow-hidden z-10 animate-fade-in border border-white/10">
-          {/* Left Panel - Image */}
-          <div className="hidden md:flex flex-1 relative flex-col justify-end p-10 text-white bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1579912437766-79b846d0a775?q=80&w=1000&auto=format&fit=crop')" }}>
-            <div className="absolute inset-0 bg-gradient-to-t from-[#14452F] to-[#14452F]/40"></div>
-            <div className="relative z-20">
-              <div className="text-2xl font-bold uppercase tracking-widest border-b-4 border-[#d4af37] inline-block mb-4 pb-1">DHsystem 2026</div>
-              <h2 className="text-3xl font-bold mb-2">QUẢN LÝ HỒ SƠ<br/>QUÂN NHÂN</h2>
-              <p className="text-sm opacity-80 font-medium">Hệ thống lõi DH-Core v2.6 - Bảo mật & Tối ưu hóa.</p>
-              <div className="mt-6 text-[#d4af37] text-xs font-bold flex items-center gap-2 bg-black/20 p-2 rounded-lg w-fit">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm0-2a6 6 0 100-12 6 6 0 000 12z" clipRule="evenodd"/></svg>
-                Secure Database Mode
-              </div>
-            </div>
-          </div>
-
-          {/* Right Panel - Actions */}
-          <div className="flex-1 p-12 flex flex-col justify-center items-center bg-white">
-            <h3 className="text-2xl font-black text-[#14452F] mb-1 uppercase tracking-tight">Cổng Đăng Nhập</h3>
-            <p className="text-gray-400 text-sm mb-10 font-bold">Vui lòng chọn chế độ truy cập</p>
-
-            <div className="w-full space-y-5">
-              <button 
-                onClick={() => { setShowLoginModal(true); setError(''); }}
-                className="w-full group flex items-center p-5 rounded-2xl military-green text-white hover:bg-[#0e3322] transition-all shadow-lg hover:-translate-y-1 relative overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <div className="bg-white/10 p-3 rounded-xl mr-4 group-hover:scale-110 transition-transform">
-                  <svg className="w-8 h-8 text-[#d4af37]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                </div>
-                <div className="text-left">
-                  <div className="font-black text-sm uppercase tracking-wider">Chỉ huy / Quản trị</div>
-                  <div className="text-[10px] opacity-70 font-medium">Truy cập Dashboard điều hành</div>
-                </div>
-              </button>
-
-              <button 
-                onClick={() => setMode(AppMode.KIOSK)}
-                className="w-full group flex items-center p-5 rounded-2xl bg-white border-2 border-[#14452F] text-[#14452F] hover:bg-green-50 transition-all shadow-sm hover:-translate-y-1"
-              >
-                <div className="bg-[#14452F]/5 p-3 rounded-xl mr-4 group-hover:scale-110 transition-transform">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2-2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                </div>
-                <div className="text-left">
-                  <div className="font-black text-sm uppercase tracking-wider">Chiến sĩ tự khai</div>
-                  <div className="text-[10px] opacity-70 font-medium">Chế độ Kiosk tự phục vụ</div>
-                </div>
-              </button>
-            </div>
-            <div className="mt-12 text-[9px] text-gray-300 font-bold uppercase tracking-widest">
-              Powered by DHsystem &copy; 2026
-            </div>
-          </div>
-        </div>
-
-        {/* Login Modal */}
-        {showLoginModal && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] animate-fade-in p-4 backdrop-blur-sm">
-            <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden border-t-8 border-[#14452F]">
-              <div className="p-8">
-                <div className="flex justify-between items-center mb-6">
-                  <h4 className="font-black text-[#14452F] uppercase flex items-center gap-2 text-xs tracking-widest">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd"></path></svg>
-                    Xác thực DH-Gate
-                  </h4>
-                  <button onClick={() => setShowLoginModal(false)} className="text-gray-400 hover:text-red-500 transition-colors">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Tên đăng nhập</label>
-                    <div className="relative">
-                       <input type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none font-bold text-xs text-gray-600 pl-10" value="admin" readOnly />
-                       <div className="absolute left-3 top-3 text-gray-400">
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/></svg>
-                       </div>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Mật khẩu bảo mật</label>
-                    <div className="relative">
-                        <input 
-                        type="password" 
-                        className="w-full p-3 pl-10 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 ring-[#14452F]/20 font-bold text-xs transition-all focus:bg-white" 
-                        placeholder="••••••" 
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleCommanderLogin()}
-                        autoFocus
-                        />
-                        <div className="absolute left-3 top-3 text-gray-400">
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd"/></svg>
-                        </div>
-                    </div>
-                  </div>
-                  
-                  {error && (
-                    <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 animate-fade-in">
-                       <svg className="w-4 h-4 text-red-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
-                       <p className="text-red-500 text-[10px] font-bold">{error}</p>
-                    </div>
-                  )}
-
-                  <button 
-                    onClick={handleCommanderLogin} 
-                    disabled={isLoading}
-                    className="w-full py-4 military-green text-white rounded-xl font-black uppercase tracking-widest shadow-lg transition-all text-xs hover:bg-[#0e3322] active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2"
-                  >
-                    {isLoading ? (
-                        <>
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            Đang xác thực...
-                        </>
-                    ) : 'Đăng nhập hệ thống'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (mode === AppMode.KIOSK) {
-    return (
-      <div className="h-screen w-full bg-[#f0f2f5] flex flex-col overflow-hidden">
-        <header className="military-green text-white pt-10 pb-20 text-center relative shadow-xl" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 85%, 50% 100%, 0 85%)' }}>
-          <h1 className="text-3xl font-black uppercase tracking-tighter mb-2">Hệ thống Kiosk DHsystem</h1>
-          <p className="text-sm opacity-70 font-medium">Vui lòng khai báo thông tin trung thực và chính xác</p>
-          <button 
-            onClick={() => setMode(AppMode.LOGIN)}
-            className="mt-4 px-6 py-2 border border-white/30 rounded-full hover:bg-white/10 text-xs font-bold transition-all flex items-center gap-2 mx-auto"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-            Quay lại màn hình chính
-          </button>
-        </header>
-        <div className="flex-1 overflow-y-auto px-4 pb-20 -mt-10 scrollbar-hide">
-          <div className="max-w-6xl mx-auto bg-white rounded-[2.5rem] shadow-2xl p-2 border-4 border-white">
-            {/* Sử dụng state units thay vì gọi db.getUnits() trực tiếp */}
-            <PersonnelForm units={units} onClose={() => { alert('Dữ liệu đã được chuyển vào hàng đợi duyệt!'); setMode(AppMode.LOGIN); }} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <Dashboard onLogout={() => setMode(AppMode.LOGIN)} />
+    <NhanVienContext.Provider value={{ danhSachNhanVien, themNhanVien, suaNhanVien, xoaNhanVien, isLoading }}>
+      {children}
+    </NhanVienContext.Provider>
   );
 };
 
-export default App;
+// Custom Hook để sử dụng Context dễ dàng
+export const useNhanVien = () => {
+  const context = useContext(NhanVienContext);
+  if (!context) {
+    throw new Error('useNhanVien must be used within a NhanVienProvider');
+  }
+  return context;
+};
+
+// --- 4. COMPONENTS (Các thành phần UI) ---
+
+// Component hiển thị thẻ nhân viên trong danh sách
+const EmployeeCard = ({ nv, onEdit, onDelete }: { nv: NhanVien, onEdit: (nv: NhanVien) => void, onDelete: (id: string) => void }) => {
+    const statusColors = {
+        dang_lam_viec: 'bg-green-100 text-green-800',
+        da_nghi_viec: 'bg-red-100 text-red-800',
+        tam_nghi: 'bg-yellow-100 text-yellow-800'
+    };
+
+    const statusText = {
+        dang_lam_viec: 'Đang làm việc',
+        da_nghi_viec: 'Đã nghỉ việc',
+        tam_nghi: 'Tạm nghỉ'
+    };
+
+    return (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-3">
+                <div className="flex items-center space-x-3">
+                    <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xl">
+                        {nv.hoTen.charAt(0)}
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-gray-900">{nv.hoTen}</h3>
+                        <p className="text-sm text-gray-500">{nv.chucVu}</p>
+                    </div>
+                </div>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[nv.trangThai]}`}>
+                    {statusText[nv.trangThai]}
+                </span>
+            </div>
+            
+            <div className="space-y-2 mb-4">
+                <div className="flex items-center text-sm text-gray-600">
+                    <Briefcase className="w-4 h-4 mr-2 text-gray-400" />
+                    {nv.phongBan}
+                </div>
+                <div className="flex items-center text-sm text-gray-600">
+                    <Mail className="w-4 h-4 mr-2 text-gray-400" />
+                    {nv.email}
+                </div>
+                <div className="flex items-center text-sm text-gray-600">
+                    <Phone className="w-4 h-4 mr-2 text-gray-400" />
+                    {nv.soDienThoai}
+                </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-3 border-t border-gray-100">
+                 {/* Nút Sửa gọi lại hàm từ props */}
+                <button 
+                    onClick={() => onEdit(nv)}
+                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                    title="Chỉnh sửa"
+                >
+                    <Edit className="w-4 h-4" />
+                </button>
+                <button 
+                    onClick={() => onDelete(nv.id)}
+                    className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                    title="Xóa"
+                >
+                    <Trash2 className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
+    );
+};
+
+// Component Danh Sách Nhân Viên
+const EmployeeList = ({ onEdit }: { onEdit: (nv: NhanVien) => void }) => {
+    const { danhSachNhanVien, xoaNhanVien, isLoading } = useNhanVien();
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const filteredList = danhSachNhanVien.filter(nv => 
+        nv.hoTen.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        nv.phongBan.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    if (isLoading) return <div className="p-8 text-center text-gray-500">Đang tải dữ liệu...</div>;
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                <div className="relative w-full md:w-96">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    <input 
+                        type="text" 
+                        placeholder="Tìm kiếm theo tên hoặc phòng ban..." 
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <div className="text-sm text-gray-500 font-medium">
+                    Tổng số: <span className="text-blue-600 font-bold">{filteredList.length}</span> nhân viên
+                </div>
+            </div>
+
+            {filteredList.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                    <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-500">Không tìm thấy nhân viên nào.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredList.map(nv => (
+                        <EmployeeCard key={nv.id} nv={nv} onEdit={onEdit} onDelete={xoaNhanVien} />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// PLACEHOLDER CHO PERSONNEL FORM (Sẽ được thay thế sau)
+// Đây là component tạm để logic App không bị gãy
+const PersonnelFormPlaceholder = ({ onBack, initialData }: { onBack: () => void, initialData?: NhanVien }) => {
+    const { themNhanVien, suaNhanVien } = useNhanVien();
+    
+    // Giả lập hành động submit để test logic storage
+    const handleMockSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        
+        // Dữ liệu mẫu giả định lấy từ form
+        const formData: NhanVien = initialData ? {
+             ...initialData,
+             hoTen: initialData.hoTen + " (Updated)", // Test edit
+        } : {
+            id: Date.now().toString(),
+            hoTen: "Nhân viên mới (Test)",
+            chucVu: "Nhân viên",
+            phongBan: "Chưa phân công",
+            email: "test@example.com",
+            soDienThoai: "0000000000",
+            ngaySinh: "2000-01-01",
+            trangThai: "dang_lam_viec",
+            diaChi: "N/A"
+        };
+
+        if (initialData) {
+            suaNhanVien(formData);
+        } else {
+            themNhanVien(formData);
+        }
+        onBack();
+    };
+
+    return (
+        <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
+             <div className="flex items-center space-x-2 text-yellow-600 bg-yellow-50 p-4 rounded-md mb-6">
+                <AlertCircle className="w-5 h-5" />
+                <span className="text-sm font-medium">Đây là màn hình Placeholder. Form nhập liệu chi tiết (PersonnelForm.tsx) sẽ được tích hợp ở bước sau.</span>
+            </div>
+
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">
+                {initialData ? `Sửa nhân viên: ${initialData.hoTen}` : 'Thêm nhân viên mới'}
+            </h2>
+            
+            <form onSubmit={handleMockSubmit} className="space-y-4">
+                <div className="p-4 border border-gray-200 rounded bg-gray-50 text-gray-500 text-sm">
+                    Khu vực này sẽ hiển thị Form nhập liệu chi tiết. Hiện tại nhấn "Lưu" sẽ tạo dữ liệu mẫu để kiểm tra tính năng Offline Storage.
+                </div>
+                <div className="flex justify-end space-x-3 mt-6">
+                    <button 
+                        type="button"
+                        onClick={onBack}
+                        className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 font-medium"
+                    >
+                        Hủy bỏ
+                    </button>
+                    <button 
+                        type="submit"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center font-medium"
+                    >
+                        <Save className="w-4 h-4 mr-2" />
+                        Lưu dữ liệu
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+};
+
+// --- 5. MAIN APP COMPONENT ---
+const AppContent = () => {
+    const [currentView, setCurrentView] = useState<'list' | 'form'>('list');
+    const [editingEmployee, setEditingEmployee] = useState<NhanVien | undefined>(undefined);
+
+    const handleAddNew = () => {
+        setEditingEmployee(undefined);
+        setCurrentView('form');
+    };
+
+    const handleEdit = (nv: NhanVien) => {
+        setEditingEmployee(nv);
+        setCurrentView('form');
+    };
+
+    const handleBackToList = () => {
+        setCurrentView('list');
+        setEditingEmployee(undefined);
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
+            {/* Header */}
+            <header className="bg-blue-700 text-white shadow-lg">
+                <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+                    <div className="flex items-center space-x-2">
+                        <Briefcase className="w-8 h-8" />
+                        <h1 className="text-2xl font-bold tracking-tight">HRM Offline</h1>
+                    </div>
+                    {currentView === 'list' && (
+                        <button 
+                            onClick={handleAddNew}
+                            className="bg-white text-blue-700 px-4 py-2 rounded-lg font-semibold hover:bg-blue-50 transition-colors flex items-center shadow-sm"
+                        >
+                            <UserPlus className="w-5 h-5 mr-2" />
+                            Thêm Nhân Viên
+                        </button>
+                    )}
+                </div>
+            </header>
+
+            {/* Main Content */}
+            <main className="container mx-auto px-4 py-8">
+                {currentView === 'list' ? (
+                    <EmployeeList onEdit={handleEdit} />
+                ) : (
+                    <PersonnelFormPlaceholder 
+                        onBack={handleBackToList} 
+                        initialData={editingEmployee} 
+                    />
+                )}
+            </main>
+        </div>
+    );
+};
+
+// Root Component wrapped with Provider
+export default function App() {
+  return (
+    <NhanVienProvider>
+      <AppContent />
+    </NhanVienProvider>
+  );
+}

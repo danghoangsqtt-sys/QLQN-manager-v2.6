@@ -1,11 +1,17 @@
-
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Meta CSP cơ bản để an toàn hơn, nhưng vẫn cho phép inline style/script cần thiết -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
     <title>Hệ thống Quản lý Quân nhân - QNManager</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Tailwind CSS (Trong môi trường production nên build ra file CSS riêng, 
+         nhưng để đơn giản ở đây ta vẫn có thể giữ CDN hoặc import trong JS) -->
+    <!-- Tốt nhất là import trong index.tsx: import './index.css' -->
+    <script src="https://cdn.tailwindcss.com"></script> 
+    <script type="module" src="/index.tsx"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -24,17 +30,9 @@
         .nav-link-active { background: linear-gradient(90deg, rgba(255, 255, 255, 0.1) 0%, transparent 100%); border-left: 4px solid var(--accent-color); color: white !important; }
         .section-title { border-bottom: 2px solid #eee; padding-bottom: 8px; margin-bottom: 16px; font-weight: 700; color: var(--primary-color); text-transform: uppercase; font-size: 0.9rem; }
     </style>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
-  }
-}
-</script>
 </head>
 <body class="overflow-hidden">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>

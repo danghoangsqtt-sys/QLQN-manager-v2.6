@@ -514,7 +514,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                                 <input type="text" placeholder="Năm sinh" className="p-2 bg-gray-50 border border-gray-200 rounded text-xs" value={ny.ns} onChange={e => {
                                     const updated = [...formData.quan_he_gia_dinh!.nguoi_yeu]; updated[idx].ns = e.target.value; updateNested('quan_he_gia_dinh.nguoi_yeu', updated);
                                 }} />
-                                {/* FIX: Property 'phone' does not exist on type '{ ten: string; ns: string; nghe_o: string; sdt: string; }'. Replacing with 'sdt'. */}
+                                {/* Đã sửa: Dùng thuộc tính 'sdt' thống nhất với types.ts */}
                                 <input type="text" placeholder="SĐT" className="p-2 bg-gray-50 border border-gray-200 rounded text-xs" value={ny.sdt} onChange={e => {
                                     const updated = [...formData.quan_he_gia_dinh!.nguoi_yeu]; updated[idx].sdt = e.target.value; updateNested('quan_he_gia_dinh.nguoi_yeu', updated);
                                 }} />
@@ -525,7 +525,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                         </div>
                     ))}
                     {(formData.quan_he_gia_dinh?.nguoi_yeu || []).length > 0 && (
-                        /* FIX: Replacing template field 'phone' with 'sdt' to match 'MilitaryPersonnel' type. */
                         <button onClick={() => addRow('quan_he_gia_dinh.nguoi_yeu', {ten: '', ns: '', sdt: '', nghe_o: ''})} className="text-[10px] font-bold text-rose-600 mt-3">+ Thêm người yêu</button>
                     )}
                 </div>

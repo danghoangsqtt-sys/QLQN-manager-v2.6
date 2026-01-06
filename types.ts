@@ -1,4 +1,3 @@
-
 export enum AppMode {
   LOGIN = 'LOGIN',
   COMMANDER = 'COMMANDER',
@@ -30,7 +29,6 @@ export interface CustomField {
   is_required: boolean;
 }
 
-// Added ShortcutConfig interface for system settings
 export interface ShortcutConfig {
   id: string;
   label: string;
@@ -111,6 +109,7 @@ export interface MilitaryPersonnel {
     cha_me_anh_em: FamilyMember[];
     vo: { ho_ten: string; nam_sinh: string; sdt: string; nghe_nghiep: string; noi_o: string } | null;
     con: Array<{ ten: string; ns: string }>;
+    // Cập nhật interface nguoi_yeu để dùng 'sdt' thống nhất
     nguoi_yeu: Array<{ ten: string; ns: string; nghe_o: string; sdt: string }>;
   };
   thong_tin_gia_dinh_chung: {

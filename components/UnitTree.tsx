@@ -99,7 +99,7 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh }) => {
         `"${p.ngay_sinh}"`,
         `"'${p.cccd}"`, // Thêm dấu nháy đơn để Excel không biến số dài thành số khoa học
         `"${p.sdt_rieng}"`,
-        `"${p.ho_khau_thu_tru?.replace(/"/g, '""')}"`, // Wrap text and escape quotes
+        `"${(p.ho_khau_thu_tru || '').replace(/"/g, '""')}"`, // Wrap text and escape quotes
         `"${p.nhap_ngu_ngay}"`,
         `"${p.vao_dang_ngay || 'Chưa vào Đảng'}"`,
         `"${p.trinh_do_van_hoa}"`

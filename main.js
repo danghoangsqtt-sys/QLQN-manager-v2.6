@@ -1,4 +1,3 @@
-
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const isDev = require('electron-is-dev');
@@ -78,6 +77,19 @@ ipcMain.handle('db-save-personnel', async (event, { id, data }) => {
     return stmt.run(id, JSON.stringify(data), data.createdAt || Date.now());
   } catch (err) {
     console.error('Lỗi lưu personnel:', err);
+    throw err;
+  }
+});
+
+// THÊM XỬ LÝ XÓA NHÂN SỰ
+ipcMain.handle('db-delete-personnel', async (event, id) => {
+  try {
+    const stmt = db.prepare('DELETE FROM personnel WHERE id = ?');
+    const info = stmt.run(id);
+    console.log(`Đã xóa hồ sơ ID: ${id}, thay đổi: ${info.changes}`);
+    return info;
+  } catch (err) {
+    console.error('Lỗi xóa personnel:', err);
     throw err;
   }
 });

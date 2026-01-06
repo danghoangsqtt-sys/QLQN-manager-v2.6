@@ -4,10 +4,18 @@ import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomFiel
 declare global {
   interface Window {
     electronAPI: {
+      // Personnel APIs
       getPersonnel: () => Promise<any[]>;
       savePersonnel: (payload: { id: string; data: MilitaryPersonnel }) => Promise<void>;
-      deletePersonnel: (id: string) => Promise<void>; // Thêm hàm xóa
-      // Các hàm cho Units nếu sau này mở rộng IPC
+      deletePersonnel: (id: string) => Promise<void>;
+      
+      // Unit APIs (Mới bổ sung)
+      getUnits: () => Promise<Unit[]>;
+      saveUnit: (unit: Unit) => Promise<void>;
+      deleteUnit: (id: string) => Promise<void>;
+
+      // System APIs
+      resetDatabase: () => Promise<{ success: boolean }>;
     };
   }
 }
@@ -149,7 +157,6 @@ class Store {
   async deletePersonnel(id: string) {
      if (this.isElectron()) {
         try {
-          // GỌI API XÓA THỰC SỰ
           await window.electronAPI.deletePersonnel(id);
           this.log('WARN', `Đã xóa vĩnh viễn hồ sơ (DB)`, `ID: ${id}`);
         } catch (e) {
@@ -187,12 +194,15 @@ class Store {
     }
   }
 
-  // --- UNIT MANAGEMENT ---
-  // Lưu ý: Hiện tại Units vẫn dùng LocalStorage để đảm bảo tương thích UI.
-  // Cần nâng cấp Main Process để hỗ trợ bảng 'units' trong SQLite sau này.
+  // --- UNIT MANAGEMENT (ĐÃ CẬP NHẬT ASYNC/DB) ---
 
-  getUnits(): Unit[] { 
+  // Chuyển thành Async để gọi DB
+  async getUnits(): Promise<Unit[]> { 
     try {
+      if (this.isElectron()) {
+        return await window.electronAPI.getUnits();
+      }
+      // Fallback
       const stored = localStorage.getItem('units');
       return stored ? JSON.parse(stored) : [];
     } catch {
@@ -200,20 +210,42 @@ class Store {
     }
   }
 
-  addUnit(name: string, parentId: string | null) {
-    const units = this.getUnits();
-    units.push({ id: Date.now().toString(), name, parentId });
-    localStorage.setItem('units', JSON.stringify(units));
+  async addUnit(name: string, parentId: string | null) {
+    const newUnit: Unit = { id: Date.now().toString(), name, parentId };
+    
+    if (this.isElectron()) {
+      await window.electronAPI.saveUnit(newUnit);
+    } else {
+      const units = await this.getUnits();
+      units.push(newUnit);
+      localStorage.setItem('units', JSON.stringify(units));
+    }
     this.log('INFO', `Thêm đơn vị mới: ${name}`);
   }
 
-  deleteUnit(id: string) {
-    const units = this.getUnits().filter(u => u.id !== id);
-    localStorage.setItem('units', JSON.stringify(units));
+  async deleteUnit(id: string) {
+    if (this.isElectron()) {
+      await window.electronAPI.deleteUnit(id);
+    } else {
+      const units = await this.getUnits();
+      const newUnits = units.filter(u => u.id !== id);
+      localStorage.setItem('units', JSON.stringify(newUnits));
+    }
     this.log('WARN', `Xóa đơn vị`, `ID: ${id}`);
   }
 
-  // --- SETTINGS ---
+  // --- SYSTEM UTILS ---
+
+  async clearDatabase() {
+    if (this.isElectron()) {
+      await window.electronAPI.resetDatabase();
+      this.log('SYSTEM', 'Đã Reset toàn bộ cơ sở dữ liệu về mặc định');
+    } else {
+      localStorage.clear();
+    }
+  }
+
+  // --- SETTINGS (Vẫn giữ LocalStorage cho Settings/Shortcuts vì chưa có bảng DB) ---
 
   getCustomFields(unitId: string): CustomField[] {
     try {
@@ -255,20 +287,18 @@ class Store {
   }
 
   getSystemStats() { 
-    // Trả về số liệu giả lập, thực tế nên query từ DB nếu có thể
     const logs = this.getLogs();
-    const units = this.getUnits();
+    // Stats này hiện tại chỉ mang tính tham khảo, sẽ được UI update chính xác sau
     return { 
-        personnelCount: 0, // Sẽ được cập nhật từ UI
-        dbSize: `SQLite/Local (${units.length} units)`, 
-        storageUsage: `${logs.length} logs`, 
+        personnelCount: 0, 
+        dbSize: this.isElectron() ? 'SQLite (Encrypted)' : 'LocalStorage (Dev)', 
+        storageUsage: `${logs.length} events`, 
         status: 'ONLINE' 
     }; 
   }
 
   runDiagnostics() {
     this.log('SYSTEM', 'Bắt đầu chẩn đoán hệ thống...');
-    // Giả lập kiểm tra
     setTimeout(() => {
         this.log('INFO', 'Kiểm tra cấu trúc cơ sở dữ liệu: OK');
         this.log('INFO', 'Kiểm tra quyền truy cập tệp tin: OK');

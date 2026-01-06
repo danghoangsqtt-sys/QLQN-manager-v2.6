@@ -12,6 +12,8 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   const [activeTab, setActiveTab] = useState(1);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   
+  // KHỞI TẠO STATE AN TOÀN
+  // Sử dụng Partial nhưng đảm bảo các object lồng nhau không bao giờ undefined khi render
   const [formData, setFormData] = useState<Partial<MilitaryPersonnel>>(initialData || {
     ho_ten: '', ten_khac: '', ngay_sinh: '', cccd: '', sdt_rieng: '',
     cap_bac: 'Binh nhì', chuc_vu: '', don_vi_id: '',
@@ -55,6 +57,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
     vi_pham_nuoc_ngoai: ''
   });
 
+  // Load custom fields based on unit
   useEffect(() => {
     if (formData.don_vi_id) {
       setCustomFields(db.getCustomFields(formData.don_vi_id));
@@ -62,45 +65,83 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   }, [formData.don_vi_id]);
 
   const handleSave = () => {
+    // Validation cơ bản
     if (!formData.ho_ten || !formData.cccd || !formData.don_vi_id) {
-      alert('Vui lòng nhập đầy đủ các thông tin bắt buộc (*)');
+      alert('Vui lòng nhập đầy đủ các thông tin bắt buộc (*): Họ tên, CCCD, Đơn vị');
       return;
     }
-    const finalData = { ...formData, don_vi: units.find(u => u.id === formData.don_vi_id)?.name || '' };
-    if (initialData) {
-      db.updatePersonnel(initialData.id, finalData);
-    } else {
-      db.addPersonnel({ ...finalData as MilitaryPersonnel, id: Date.now().toString(), createdAt: Date.now() });
-    }
-    onClose();
+    
+    // Tự động điền tên đơn vị nếu có ID (phòng trường hợp form thiếu)
+    const unitName = units.find(u => u.id === formData.don_vi_id)?.name || '';
+    const finalData = { ...formData, don_vi: unitName };
+    
+    // Lưu vào DB (Async)
+    const save = async () => {
+        try {
+            if (initialData && initialData.id) {
+                await db.updatePersonnel(initialData.id, finalData);
+            } else {
+                await db.addPersonnel({ 
+                    ...finalData as MilitaryPersonnel, 
+                    id: Date.now().toString(), 
+                    createdAt: Date.now() 
+                });
+            }
+            onClose();
+        } catch (e) {
+            alert('Lỗi khi lưu hồ sơ: ' + e);
+        }
+    };
+    save();
   };
 
+  // Helper function: Update nested object properties safely
   const updateNested = (path: string, value: any) => {
     const keys = path.split('.');
     setFormData(prev => {
+      // Clone deep enough to be safe (JSON parse/stringify is slow but safest for deep nested, 
+      // but here we use a simple loop approach for performance)
       let updated = { ...prev };
       let current: any = updated;
+      
       for (let i = 0; i < keys.length - 1; i++) {
-        current[keys[i]] = { ...current[keys[i]] };
-        current = current[keys[i]];
+        const key = keys[i];
+        // Nếu path chưa tồn tại, tạo object rỗng
+        if (!current[key]) current[key] = {};
+        // Clone object tại level này để đảm bảo immutability
+        current[key] = { ...current[key] };
+        current = current[key];
       }
+      
       current[keys[keys.length - 1]] = value;
       return updated;
     });
   };
 
+  // Helper functions for Arrays
   const addRow = (path: string, template: any) => {
     const keys = path.split('.');
     let current: any = formData;
-    for (const k of keys) current = current[k];
-    updateNested(path, [...(current || []), template]);
+    for (const k of keys) {
+        if (!current[k]) current[k] = []; // Safety check
+        current = current[k];
+    }
+    if (Array.isArray(current)) {
+        updateNested(path, [...current, template]);
+    } else {
+        // Fallback nếu path không phải array
+        updateNested(path, [template]);
+    }
   };
 
   const removeRow = (path: string, index: number) => {
     const keys = path.split('.');
     let current: any = formData;
-    for (const k of keys) current = current[k];
-    updateNested(path, current.filter((_: any, i: number) => i !== index));
+    for (const k of keys) current = current?.[k];
+    
+    if (Array.isArray(current)) {
+        updateNested(path, current.filter((_: any, i: number) => i !== index));
+    }
   };
 
   return (
@@ -133,9 +174,10 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
 
       <div className="flex-1 overflow-y-auto p-8 bg-white space-y-10 scrollbar-hide">
         
+        {/* --- TAB 1: THÔNG TIN CHUNG --- */}
         {activeTab === 1 && (
           <div className="animate-fade-in space-y-10">
-            {/* Image 1: Basic Info */}
+            {/* Basic Info */}
             <section>
               <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
@@ -154,60 +196,60 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                 <div className="col-span-12 md:col-span-10 grid grid-cols-3 gap-x-6 gap-y-4">
                   <div className="col-span-2">
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">Họ và tên khai sinh <span className="text-red-500">*</span></label>
-                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none font-bold text-[#14452F] uppercase" value={formData.ho_ten} onChange={e => setFormData({...formData, ho_ten: e.target.value.toUpperCase()})} />
+                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none font-bold text-[#14452F] uppercase" value={formData.ho_ten || ''} onChange={e => setFormData({...formData, ho_ten: e.target.value.toUpperCase()})} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">Tên khác (nếu có)</label>
-                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.ten_khac} onChange={e => setFormData({...formData, ten_khac: e.target.value})} />
+                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.ten_khac || ''} onChange={e => setFormData({...formData, ten_khac: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">Ngày sinh <span className="text-red-500">*</span></label>
-                    <input type="date" className="w-full p-2 border border-gray-200 rounded-md outline-none font-medium" value={formData.ngay_sinh} onChange={e => setFormData({...formData, ngay_sinh: e.target.value})} />
+                    <input type="date" className="w-full p-2 border border-gray-200 rounded-md outline-none font-medium" value={formData.ngay_sinh || ''} onChange={e => setFormData({...formData, ngay_sinh: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">CCCD/CMND <span className="text-red-500">*</span></label>
-                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none font-bold" value={formData.cccd} onChange={e => setFormData({...formData, cccd: e.target.value})} />
+                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none font-bold" value={formData.cccd || ''} onChange={e => setFormData({...formData, cccd: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">SĐT Cá nhân</label>
-                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" placeholder="Số thường dùng" value={formData.sdt_rieng} onChange={e => setFormData({...formData, sdt_rieng: e.target.value})} />
+                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" placeholder="Số thường dùng" value={formData.sdt_rieng || ''} onChange={e => setFormData({...formData, sdt_rieng: e.target.value})} />
                   </div>
                   <div className="col-span-3">
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">HKTT (Số nhà, đường, ấp, khu phố, xã/phường...)</label>
-                    <textarea className="w-full p-2 border border-gray-200 rounded-md outline-none text-xs" rows={2} placeholder="Ghi cụ thể địa chỉ thường trú..." value={formData.ho_khau_thu_tru} onChange={e => setFormData({...formData, ho_khau_thu_tru: e.target.value})} />
+                    <textarea className="w-full p-2 border border-gray-200 rounded-md outline-none text-xs" rows={2} placeholder="Ghi cụ thể địa chỉ thường trú..." value={formData.ho_khau_thu_tru || ''} onChange={e => setFormData({...formData, ho_khau_thu_tru: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">Nơi sinh (Xã, Huyện, Tỉnh)</label>
-                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.noi_sinh} onChange={e => setFormData({...formData, noi_sinh: e.target.value})} />
+                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.noi_sinh || ''} onChange={e => setFormData({...formData, noi_sinh: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">Dân tộc</label>
-                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.dan_toc} onChange={e => setFormData({...formData, dan_toc: e.target.value})} />
+                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.dan_toc || ''} onChange={e => setFormData({...formData, dan_toc: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">Tôn giáo</label>
-                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.ton_giao} onChange={e => setFormData({...formData, ton_giao: e.target.value})} />
+                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.ton_giao || ''} onChange={e => setFormData({...formData, ton_giao: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">Trình độ học vấn</label>
-                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" placeholder="12/12" value={formData.trinh_do_van_hoa} onChange={e => setFormData({...formData, trinh_do_van_hoa: e.target.value})} />
+                    <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" placeholder="12/12" value={formData.trinh_do_van_hoa || ''} onChange={e => setFormData({...formData, trinh_do_van_hoa: e.target.value})} />
                   </div>
                   <div className="flex flex-col justify-center">
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">Đã tốt nghiệp chưa?</label>
                     <div className="flex gap-4">
-                      <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="radio" checked={formData.da_tot_nghiep} onChange={() => setFormData({...formData, da_tot_nghiep: true})} className="w-3 h-3" /> Đã TN</label>
+                      <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="radio" checked={!!formData.da_tot_nghiep} onChange={() => setFormData({...formData, da_tot_nghiep: true})} className="w-3 h-3" /> Đã TN</label>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="radio" checked={!formData.da_tot_nghiep} onChange={() => setFormData({...formData, da_tot_nghiep: false})} className="w-3 h-3" /> Chưa TN</label>
                     </div>
                   </div>
                   <div className="col-span-1">
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">Năng khiếu/Sở trường</label>
-                    <textarea className="w-full p-2 border border-gray-200 rounded-md outline-none text-xs" rows={1} placeholder="Vẽ, đàn, hát, sửa chữa..." value={formData.nang_khieu_so_truong} onChange={e => setFormData({...formData, nang_khieu_so_truong: e.target.value})} />
+                    <textarea className="w-full p-2 border border-gray-200 rounded-md outline-none text-xs" rows={1} placeholder="Vẽ, đàn, hát, sửa chữa..." value={formData.nang_khieu_so_truong || ''} onChange={e => setFormData({...formData, nang_khieu_so_truong: e.target.value})} />
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* Image 2: Unit info */}
+            {/* Unit info */}
             <section className="border-t pt-8">
               <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0z"/></svg>
@@ -216,39 +258,39 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
               <div className="grid grid-cols-5 gap-6">
                 <div className="col-span-2">
                   <label className="block text-[10px] font-bold text-gray-600 mb-1">Đơn vị <span className="text-red-500">*</span></label>
-                  <select className="w-full p-2 border border-gray-200 rounded-md outline-none font-bold" value={formData.don_vi_id} onChange={e => setFormData({...formData, don_vi_id: e.target.value})}>
+                  <select className="w-full p-2 border border-gray-200 rounded-md outline-none font-bold" value={formData.don_vi_id || ''} onChange={e => setFormData({...formData, don_vi_id: e.target.value})}>
                     <option value="">-- Chọn đơn vị --</option>
                     {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-gray-600 mb-1">Cấp bậc</label>
-                  <select className="w-full p-2 border border-gray-200 rounded-md outline-none font-bold" value={formData.cap_bac} onChange={e => setFormData({...formData, cap_bac: e.target.value})}>
-                    <option>Binh nhì</option><option>Binh nhất</option><option>Hạ sĩ</option><option>Trung sĩ</option><option>Thượng sĩ</option>
+                  <select className="w-full p-2 border border-gray-200 rounded-md outline-none font-bold" value={formData.cap_bac || 'Binh nhì'} onChange={e => setFormData({...formData, cap_bac: e.target.value})}>
+                    <option>Binh nhì</option><option>Binh nhất</option><option>Hạ sĩ</option><option>Trung sĩ</option><option>Thượng sĩ</option><option>Thiếu úy</option><option>Trung úy</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-gray-600 mb-1">Chức vụ</label>
-                  <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.chuc_vu} onChange={e => setFormData({...formData, chuc_vu: e.target.value})} />
+                  <input type="text" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.chuc_vu || ''} onChange={e => setFormData({...formData, chuc_vu: e.target.value})} />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-gray-600 mb-1">Ngày nhập ngũ</label>
-                  <input type="date" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.nhap_ngu_ngay} onChange={e => setFormData({...formData, nhap_ngu_ngay: e.target.value})} />
+                  <input type="date" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.nhap_ngu_ngay || ''} onChange={e => setFormData({...formData, nhap_ngu_ngay: e.target.value})} />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-gray-600 mb-1">Ngày vào Đoàn</label>
-                  <input type="date" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.ngay_vao_doan} onChange={e => setFormData({...formData, ngay_vao_doan: e.target.value})} />
+                  <input type="date" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.ngay_vao_doan || ''} onChange={e => setFormData({...formData, ngay_vao_doan: e.target.value})} />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-gray-600 mb-1">Ngày vào Đảng</label>
-                  <input type="date" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.vao_dang_ngay} onChange={e => setFormData({...formData, vao_dang_ngay: e.target.value})} />
+                  <input type="date" className="w-full p-2 border border-gray-200 rounded-md outline-none" value={formData.vao_dang_ngay || ''} onChange={e => setFormData({...formData, vao_dang_ngay: e.target.value})} />
                 </div>
               </div>
             </section>
           </div>
         )}
 
-        {/* Tab 2: Bio & Social (Image 3) */}
+        {/* --- TAB 2: TIỂU SỬ & MXH --- */}
         {activeTab === 2 && (
           <div className="animate-fade-in space-y-10">
             <section>
@@ -270,13 +312,13 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                     {(formData.tieu_su_ban_than || []).map((row, idx) => (
                       <tr key={idx}>
                         <td className="p-2 border-r"><input type="text" placeholder="VD: 2015 - 2019" className="w-full p-2 border border-gray-100 rounded outline-none" value={row.time} onChange={e => {
-                          const updated = [...formData.tieu_su_ban_than!]; updated[idx].time = e.target.value; updateNested('tieu_su_ban_than', updated);
+                          const updated = [...(formData.tieu_su_ban_than || [])]; updated[idx].time = e.target.value; updateNested('tieu_su_ban_than', updated);
                         }} /></td>
                         <td className="p-2 border-r"><input type="text" placeholder="Làm gì?" className="w-full p-2 border border-gray-100 rounded outline-none" value={row.job} onChange={e => {
-                          const updated = [...formData.tieu_su_ban_than!]; updated[idx].job = e.target.value; updateNested('tieu_su_ban_than', updated);
+                          const updated = [...(formData.tieu_su_ban_than || [])]; updated[idx].job = e.target.value; updateNested('tieu_su_ban_than', updated);
                         }} /></td>
                         <td className="p-2 border-r"><input type="text" placeholder="Ở đâu?" className="w-full p-2 border border-gray-100 rounded outline-none" value={row.place} onChange={e => {
-                          const updated = [...formData.tieu_su_ban_than!]; updated[idx].place = e.target.value; updateNested('tieu_su_ban_than', updated);
+                          const updated = [...(formData.tieu_su_ban_than || [])]; updated[idx].place = e.target.value; updateNested('tieu_su_ban_than', updated);
                         }} /></td>
                         <td className="p-2 text-center"><button onClick={() => removeRow('tieu_su_ban_than', idx)} className="text-red-400 hover:text-red-600">×</button></td>
                       </tr>
@@ -307,13 +349,19 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                       {(formData.mang_xa_hoi?.[type] || []).map((acc, idx) => (
                         <div key={idx} className="flex gap-2 group animate-fade-in">
                           <input type="text" placeholder="Tên TK/ID" className="w-1/2 p-2 bg-white border border-gray-200 rounded text-[10px]" value={acc.name} onChange={e => {
-                            const updated = {...formData.mang_xa_hoi!}; updated[type][idx].name = e.target.value; updateNested('mang_xa_hoi', updated);
+                            const currentList = [...(formData.mang_xa_hoi?.[type] || [])];
+                            currentList[idx] = { ...currentList[idx], name: e.target.value };
+                            updateNested(`mang_xa_hoi.${type}`, currentList);
                           }} />
                           <input type="text" placeholder="SĐT Đăng ký" className="w-1/2 p-2 bg-white border border-gray-200 rounded text-[10px]" value={acc.phone} onChange={e => {
-                            const updated = {...formData.mang_xa_hoi!}; updated[type][idx].phone = e.target.value; updateNested('mang_xa_hoi', updated);
+                            const currentList = [...(formData.mang_xa_hoi?.[type] || [])];
+                            currentList[idx] = { ...currentList[idx], phone: e.target.value };
+                            updateNested(`mang_xa_hoi.${type}`, currentList);
                           }} />
                           <button onClick={() => {
-                            const updated = {...formData.mang_xa_hoi!}; updated[type].splice(idx, 1); updateNested('mang_xa_hoi', updated);
+                             const currentList = [...(formData.mang_xa_hoi?.[type] || [])];
+                             currentList.splice(idx, 1);
+                             updateNested(`mang_xa_hoi.${type}`, currentList);
                           }} className="text-red-400 hover:text-red-600 transition-colors">×</button>
                         </div>
                       ))}
@@ -329,7 +377,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* Tab 3: Family (Image 4 & 5) */}
+        {/* --- TAB 3: GIA ĐÌNH & HÔN NHÂN --- */}
         {activeTab === 3 && (
           <div className="animate-fade-in space-y-10">
             <section>
@@ -356,7 +404,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 uppercase mb-2">Lý do không sống chung với bố, mẹ (nếu có)</label>
-                  <textarea className="w-full p-4 bg-white border border-gray-200 rounded-xl outline-none text-xs" rows={2} placeholder="Ghi rõ lý do..." value={formData.hoan_canh_song?.ly_do_khong_song_cung_bo_me} onChange={e => updateNested('hoan_canh_song.ly_do_khong_song_cung_bo_me', e.target.value)} />
+                  <textarea className="w-full p-4 bg-white border border-gray-200 rounded-xl outline-none text-xs" rows={2} placeholder="Ghi rõ lý do..." value={formData.hoan_canh_song?.ly_do_khong_song_cung_bo_me || ''} onChange={e => updateNested('hoan_canh_song.ly_do_khong_song_cung_bo_me', e.target.value)} />
                 </div>
               </div>
             </section>
@@ -369,27 +417,27 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
               <div className="grid grid-cols-2 gap-8 mb-6">
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Nghề nghiệp chính của gia đình</label>
-                  <input type="text" className="w-full p-2 border border-gray-200 rounded-lg outline-none" value={formData.thong_tin_gia_dinh_chung?.nghe_nghiep_chinh} onChange={e => updateNested('thong_tin_gia_dinh_chung.nghe_nghiep_chinh', e.target.value)} />
+                  <input type="text" className="w-full p-2 border border-gray-200 rounded-lg outline-none" value={formData.thong_tin_gia_dinh_chung?.nghe_nghiep_chinh || ''} onChange={e => updateNested('thong_tin_gia_dinh_chung.nghe_nghiep_chinh', e.target.value)} />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Mức sống của gia đình</label>
-                  <select className="w-full p-2 border border-gray-200 rounded-lg outline-none font-medium" value={formData.thong_tin_gia_dinh_chung?.muc_song} onChange={e => updateNested('thong_tin_gia_dinh_chung.muc_song', e.target.value)}>
+                  <select className="w-full p-2 border border-gray-200 rounded-lg outline-none font-medium" value={formData.thong_tin_gia_dinh_chung?.muc_song || 'Đủ ăn'} onChange={e => updateNested('thong_tin_gia_dinh_chung.muc_song', e.target.value)}>
                     <option>Đủ ăn</option><option>Khó khăn</option><option>Khá</option>
                   </select>
                 </div>
               </div>
               <div className="flex flex-col gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
                 <div className="flex items-center gap-3">
-                  <input type="checkbox" checked={formData.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than.co_khong} onChange={e => updateNested('thong_tin_gia_dinh_chung.lich_su_vi_pham_nguoi_than.co_khong', e.target.checked)} className="w-5 h-5 accent-[#14452F]" />
+                  <input type="checkbox" checked={!!formData.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than?.co_khong} onChange={e => updateNested('thong_tin_gia_dinh_chung.lich_su_vi_pham_nguoi_than.co_khong', e.target.checked)} className="w-5 h-5 accent-[#14452F]" />
                   <label className="text-[11px] font-bold text-gray-700 uppercase">Trong gia đình (bố, mẹ, anh, chị em ruột) có ai đã hoặc đang vi phạm pháp luật không?</label>
                 </div>
-                {formData.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than.co_khong && (
-                    <textarea className="w-full p-3 bg-white border border-gray-200 rounded-lg text-xs" rows={2} placeholder="Ai vi phạm? Vi phạm gì? Bị xử lý như thế nào?..." value={formData.thong_tin_gia_dinh_chung.lich_su_vi_pham_nguoi_than.chi_tiet} onChange={e => updateNested('thong_tin_gia_dinh_chung.lich_su_vi_pham_nguoi_than.chi_tiet', e.target.value)} />
+                {formData.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than?.co_khong && (
+                    <textarea className="w-full p-3 bg-white border border-gray-200 rounded-lg text-xs" rows={2} placeholder="Ai vi phạm? Vi phạm gì? Bị xử lý như thế nào?..." value={formData.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than?.chi_tiet || ''} onChange={e => updateNested('thong_tin_gia_dinh_chung.lich_su_vi_pham_nguoi_than.chi_tiet', e.target.value)} />
                 )}
               </div>
               <div className="mt-6">
                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Trong gia đình có ai bị Covid-19 không? Nếu có, ngày nào?</label>
-                <input type="text" placeholder="Ghi rõ thông tin..." className="w-full p-2 border border-gray-200 rounded-lg outline-none" value={formData.thong_tin_gia_dinh_chung?.lich_su_covid_gia_dinh} onChange={e => updateNested('thong_tin_gia_dinh_chung.lich_su_covid_gia_dinh', e.target.value)} />
+                <input type="text" placeholder="Ghi rõ thông tin..." className="w-full p-2 border border-gray-200 rounded-lg outline-none" value={formData.thong_tin_gia_dinh_chung?.lich_su_covid_gia_dinh || ''} onChange={e => updateNested('thong_tin_gia_dinh_chung.lich_su_covid_gia_dinh', e.target.value)} />
               </div>
             </section>
 
@@ -420,25 +468,25 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                       <tr key={idx}>
                         <td className="p-2 border-r">
                           <select className="w-full p-2 border border-gray-100 rounded text-[11px] font-bold outline-none" value={f.quan_he} onChange={e => {
-                            const updated = [...formData.quan_he_gia_dinh!.cha_me_anh_em]; updated[idx].quan_he = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                            const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], quan_he: e.target.value }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
                           }}>
                             <option>Bố</option><option>Mẹ</option><option>Vợ</option><option>Con</option><option>Anh</option><option>Chị</option><option>Em</option><option>Ông</option><option>Bà</option><option>Bạn</option>
                           </select>
                         </td>
                         <td className="p-2 border-r"><input type="text" placeholder="Họ tên" className="w-full p-2 border border-gray-100 rounded text-[11px] font-bold uppercase" value={f.ho_ten} onChange={e => {
-                          const updated = [...formData.quan_he_gia_dinh!.cha_me_anh_em]; updated[idx].ho_ten = e.target.value.toUpperCase(); updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                          const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], ho_ten: e.target.value.toUpperCase() }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
                         }} /></td>
                         <td className="p-2 border-r"><input type="text" placeholder="Năm sinh" className="w-full p-2 border border-gray-100 rounded text-[11px] text-center" value={f.nam_sinh} onChange={e => {
-                          const updated = [...formData.quan_he_gia_dinh!.cha_me_anh_em]; updated[idx].nam_sinh = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                          const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], nam_sinh: e.target.value }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
                         }} /></td>
                         <td className="p-2 border-r"><input type="text" placeholder="Nghề nghiệp" className="w-full p-2 border border-gray-100 rounded text-[11px]" value={f.nghe_nghiep} onChange={e => {
-                          const updated = [...formData.quan_he_gia_dinh!.cha_me_anh_em]; updated[idx].nghe_nghiep = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                          const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], nghe_nghiep: e.target.value }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
                         }} /></td>
                         <td className="p-2 border-r"><input type="text" placeholder="Quê quán/Chỗ ở" className="w-full p-2 border border-gray-100 rounded text-[11px]" value={f.cho_o} onChange={e => {
-                          const updated = [...formData.quan_he_gia_dinh!.cha_me_anh_em]; updated[idx].cho_o = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                          const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], cho_o: e.target.value }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
                         }} /></td>
                         <td className="p-2 border-r"><input type="text" placeholder="SĐT" className="w-full p-2 border border-gray-100 rounded text-[11px] font-bold" value={f.sdt} onChange={e => {
-                          const updated = [...formData.quan_he_gia_dinh!.cha_me_anh_em]; updated[idx].sdt = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                          const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], sdt: e.target.value }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
                         }} /></td>
                         <td className="p-2 text-center"><button onClick={() => removeRow('quan_he_gia_dinh.cha_me_anh_em', idx)} className="text-red-400 hover:text-red-600 transition-all">×</button></td>
                       </tr>
@@ -459,14 +507,14 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                       <label className="flex items-center gap-1.5 text-xs font-bold cursor-pointer"><input type="radio" checked={formData.quan_he_gia_dinh?.vo === null} onChange={() => updateNested('quan_he_gia_dinh.vo', null)} className="accent-yellow-700" /> Chưa</label>
                       <label className="flex items-center gap-1.5 text-xs font-bold cursor-pointer"><input type="radio" checked={formData.quan_he_gia_dinh?.vo !== null} onChange={() => updateNested('quan_he_gia_dinh.vo', {ho_ten: '', nam_sinh: '', sdt: '', nghe_nghiep: '', noi_o: ''})} className="accent-yellow-700" /> Có</label>
                     </div>
-                    {/* ADDED WIFE DETAILS INPUTS */}
+                    {/* WIFE DETAILS (SAFE ACCESS) */}
                     {formData.quan_he_gia_dinh?.vo && (
                         <div className="grid grid-cols-2 gap-3 mt-3 animate-fade-in">
-                          <input type="text" placeholder="Họ tên vợ" className="col-span-2 p-2 bg-white border border-gray-200 rounded text-xs font-bold uppercase" value={formData.quan_he_gia_dinh.vo.ho_ten} onChange={e => updateNested('quan_he_gia_dinh.vo.ho_ten', e.target.value.toUpperCase())} />
-                          <input type="text" placeholder="Năm sinh" className="p-2 bg-white border border-gray-200 rounded text-xs" value={formData.quan_he_gia_dinh.vo.nam_sinh} onChange={e => updateNested('quan_he_gia_dinh.vo.nam_sinh', e.target.value)} />
-                          <input type="text" placeholder="SĐT" className="p-2 bg-white border border-gray-200 rounded text-xs" value={formData.quan_he_gia_dinh.vo.sdt} onChange={e => updateNested('quan_he_gia_dinh.vo.sdt', e.target.value)} />
-                          <input type="text" placeholder="Nghề nghiệp" className="col-span-2 p-2 bg-white border border-gray-200 rounded text-xs" value={formData.quan_he_gia_dinh.vo.nghe_nghiep} onChange={e => updateNested('quan_he_gia_dinh.vo.nghe_nghiep', e.target.value)} />
-                          <textarea placeholder="Nơi ở hiện nay của vợ" className="col-span-2 p-2 bg-white border border-gray-200 rounded text-xs" rows={2} value={formData.quan_he_gia_dinh.vo.noi_o} onChange={e => updateNested('quan_he_gia_dinh.vo.noi_o', e.target.value)} />
+                          <input type="text" placeholder="Họ tên vợ" className="col-span-2 p-2 bg-white border border-gray-200 rounded text-xs font-bold uppercase" value={formData.quan_he_gia_dinh.vo.ho_ten || ''} onChange={e => updateNested('quan_he_gia_dinh.vo.ho_ten', e.target.value.toUpperCase())} />
+                          <input type="text" placeholder="Năm sinh" className="p-2 bg-white border border-gray-200 rounded text-xs" value={formData.quan_he_gia_dinh.vo.nam_sinh || ''} onChange={e => updateNested('quan_he_gia_dinh.vo.nam_sinh', e.target.value)} />
+                          <input type="text" placeholder="SĐT" className="p-2 bg-white border border-gray-200 rounded text-xs" value={formData.quan_he_gia_dinh.vo.sdt || ''} onChange={e => updateNested('quan_he_gia_dinh.vo.sdt', e.target.value)} />
+                          <input type="text" placeholder="Nghề nghiệp" className="col-span-2 p-2 bg-white border border-gray-200 rounded text-xs" value={formData.quan_he_gia_dinh.vo.nghe_nghiep || ''} onChange={e => updateNested('quan_he_gia_dinh.vo.nghe_nghiep', e.target.value)} />
+                          <textarea placeholder="Nơi ở hiện nay của vợ" className="col-span-2 p-2 bg-white border border-gray-200 rounded text-xs" rows={2} value={formData.quan_he_gia_dinh.vo.noi_o || ''} onChange={e => updateNested('quan_he_gia_dinh.vo.noi_o', e.target.value)} />
                         </div>
                       )}
                   </div>
@@ -476,16 +524,16 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                       <label className="flex items-center gap-1.5 text-xs font-bold cursor-pointer"><input type="radio" checked={(formData.quan_he_gia_dinh?.con || []).length === 0} onChange={() => updateNested('quan_he_gia_dinh.con', [])} className="accent-yellow-700" /> Chưa</label>
                       <label className="flex items-center gap-1.5 text-xs font-bold cursor-pointer"><input type="radio" checked={(formData.quan_he_gia_dinh?.con || []).length > 0} onChange={() => { if(!formData.quan_he_gia_dinh?.con?.length) addRow('quan_he_gia_dinh.con', {ten: '', ns: ''}) }} className="accent-yellow-700" /> Có</label>
                     </div>
-                    {/* ADDED CHILDREN DETAILS INPUTS */}
+                    {/* CHILDREN DETAILS */}
                     {formData.quan_he_gia_dinh?.con && formData.quan_he_gia_dinh.con.length > 0 && (
                         <div className="mt-3 space-y-2">
                             {formData.quan_he_gia_dinh.con.map((c: any, idx: number) => (
                                 <div key={idx} className="flex gap-2 animate-fade-in">
                                     <input type="text" placeholder="Họ tên con" className="flex-1 p-2 bg-white border border-gray-200 rounded text-xs" value={c.ten} onChange={e => {
-                                        const updated = [...formData.quan_he_gia_dinh!.con]; updated[idx].ten = e.target.value; updateNested('quan_he_gia_dinh.con', updated);
+                                        const updated = [...(formData.quan_he_gia_dinh?.con || [])]; updated[idx] = { ...updated[idx], ten: e.target.value }; updateNested('quan_he_gia_dinh.con', updated);
                                     }} />
                                     <input type="text" placeholder="Năm sinh" className="w-24 p-2 bg-white border border-gray-200 rounded text-xs" value={c.ns} onChange={e => {
-                                        const updated = [...formData.quan_he_gia_dinh!.con]; updated[idx].ns = e.target.value; updateNested('quan_he_gia_dinh.con', updated);
+                                        const updated = [...(formData.quan_he_gia_dinh?.con || [])]; updated[idx] = { ...updated[idx], ns: e.target.value }; updateNested('quan_he_gia_dinh.con', updated);
                                     }} />
                                     <button onClick={() => removeRow('quan_he_gia_dinh.con', idx)} className="text-red-400 p-1">×</button>
                                 </div>
@@ -496,6 +544,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                   </div>
                 </div>
               </div>
+              
               <div className="bg-rose-50/30 p-6 rounded-2xl border border-rose-100 space-y-6">
                 <h4 className="text-[11px] font-black uppercase text-rose-900 border-b border-rose-100 pb-3">Người yêu</h4>
                 <div className="p-4 bg-white/50 rounded-xl">
@@ -503,24 +552,24 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                     <input type="checkbox" checked={(formData.quan_he_gia_dinh?.nguoi_yeu || []).length > 0} onChange={e => updateNested('quan_he_gia_dinh.nguoi_yeu', e.target.checked ? [{ten: '', ns: '', nghe_o: '', sdt: ''}] : [])} className="w-4 h-4 accent-rose-700" />
                     Đang có người yêu
                   </label>
-                  {/* ADDED LOVER DETAILS INPUTS */}
+                  {/* LOVER DETAILS */}
                   {(formData.quan_he_gia_dinh?.nguoi_yeu || []).map((ny: any, idx: number) => (
                         <div key={idx} className="mt-4 p-3 bg-white border border-rose-100 rounded-lg space-y-3 relative animate-fade-in">
                             <button onClick={() => removeRow('quan_he_gia_dinh.nguoi_yeu', idx)} className="absolute top-2 right-2 text-red-400">×</button>
                             <input type="text" placeholder="Họ tên" className="w-full p-2 bg-gray-50 border border-gray-200 rounded text-xs font-bold" value={ny.ten} onChange={e => {
-                                const updated = [...formData.quan_he_gia_dinh!.nguoi_yeu]; updated[idx].ten = e.target.value; updateNested('quan_he_gia_dinh.nguoi_yeu', updated);
+                                const updated = [...(formData.quan_he_gia_dinh?.nguoi_yeu || [])]; updated[idx] = { ...updated[idx], ten: e.target.value }; updateNested('quan_he_gia_dinh.nguoi_yeu', updated);
                             }} />
                             <div className="grid grid-cols-2 gap-2">
                                 <input type="text" placeholder="Năm sinh" className="p-2 bg-gray-50 border border-gray-200 rounded text-xs" value={ny.ns} onChange={e => {
-                                    const updated = [...formData.quan_he_gia_dinh!.nguoi_yeu]; updated[idx].ns = e.target.value; updateNested('quan_he_gia_dinh.nguoi_yeu', updated);
+                                    const updated = [...(formData.quan_he_gia_dinh?.nguoi_yeu || [])]; updated[idx] = { ...updated[idx], ns: e.target.value }; updateNested('quan_he_gia_dinh.nguoi_yeu', updated);
                                 }} />
                                 {/* Đã sửa: Dùng thuộc tính 'sdt' thống nhất với types.ts */}
                                 <input type="text" placeholder="SĐT" className="p-2 bg-gray-50 border border-gray-200 rounded text-xs" value={ny.sdt} onChange={e => {
-                                    const updated = [...formData.quan_he_gia_dinh!.nguoi_yeu]; updated[idx].sdt = e.target.value; updateNested('quan_he_gia_dinh.nguoi_yeu', updated);
+                                    const updated = [...(formData.quan_he_gia_dinh?.nguoi_yeu || [])]; updated[idx] = { ...updated[idx], sdt: e.target.value }; updateNested('quan_he_gia_dinh.nguoi_yeu', updated);
                                 }} />
                             </div>
                             <input type="text" placeholder="Nghề nghiệp/Nơi ở" className="w-full p-2 bg-gray-50 border border-gray-200 rounded text-xs" value={ny.nghe_o} onChange={e => {
-                                const updated = [...formData.quan_he_gia_dinh!.nguoi_yeu]; updated[idx].nghe_o = e.target.value; updateNested('quan_he_gia_dinh.nguoi_yeu', updated);
+                                const updated = [...(formData.quan_he_gia_dinh?.nguoi_yeu || [])]; updated[idx] = { ...updated[idx], nghe_o: e.target.value }; updateNested('quan_he_gia_dinh.nguoi_yeu', updated);
                             }} />
                         </div>
                     ))}
@@ -533,7 +582,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* Tab 4: Foreign (Image 6) */}
+        {/* --- TAB 4: YẾU TỐ NƯỚC NGOÀI --- */}
         {activeTab === 4 && (
           <div className="animate-fade-in space-y-10">
             <section>
@@ -546,25 +595,25 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                 <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
                   <label className="block text-[11px] font-bold text-gray-700 uppercase mb-4">Có quan hệ với ai ở nước ngoài không?</label>
                   <div className="flex gap-8 mb-4">
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.yeu_to_nuoc_ngoai?.than_nhan.length} onChange={() => updateNested('yeu_to_nuoc_ngoai.than_nhan', [])} className="w-4 h-4 accent-[#14452F]" /> Không</label>
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!formData.yeu_to_nuoc_ngoai?.than_nhan.length} onChange={() => { if(!formData.yeu_to_nuoc_ngoai?.than_nhan.length) addRow('yeu_to_nuoc_ngoai.than_nhan', {ten: '', qh: '', nuoc: ''}) }} className="w-4 h-4 accent-[#14452F]" /> Có</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!(formData.yeu_to_nuoc_ngoai?.than_nhan || []).length} onChange={() => updateNested('yeu_to_nuoc_ngoai.than_nhan', [])} className="w-4 h-4 accent-[#14452F]" /> Không</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!(formData.yeu_to_nuoc_ngoai?.than_nhan || []).length} onChange={() => { if(!formData.yeu_to_nuoc_ngoai?.than_nhan?.length) addRow('yeu_to_nuoc_ngoai.than_nhan', {ten: '', qh: '', nuoc: ''}) }} className="w-4 h-4 accent-[#14452F]" /> Có</label>
                   </div>
                   {/* ADDED FOREIGN RELATIVES INPUTS */}
-                  {formData.yeu_to_nuoc_ngoai?.than_nhan.map((t: any, idx: number) => (
+                  {(formData.yeu_to_nuoc_ngoai?.than_nhan || []).map((t: any, idx: number) => (
                     <div key={idx} className="flex gap-4 p-3 bg-gray-50 rounded-lg animate-fade-in mb-2">
                         <input type="text" placeholder="Họ tên" className="flex-1 p-2 bg-white border border-gray-200 rounded text-xs" value={t.ten} onChange={e => {
-                            const updated = [...formData.yeu_to_nuoc_ngoai!.than_nhan]; updated[idx].ten = e.target.value; updateNested('yeu_to_nuoc_ngoai.than_nhan', updated);
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.than_nhan || [])]; updated[idx] = { ...updated[idx], ten: e.target.value }; updateNested('yeu_to_nuoc_ngoai.than_nhan', updated);
                         }} />
                         <input type="text" placeholder="Quan hệ" className="w-1/4 p-2 bg-white border border-gray-200 rounded text-xs" value={t.qh} onChange={e => {
-                            const updated = [...formData.yeu_to_nuoc_ngoai!.than_nhan]; updated[idx].qh = e.target.value; updateNested('yeu_to_nuoc_ngoai.than_nhan', updated);
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.than_nhan || [])]; updated[idx] = { ...updated[idx], qh: e.target.value }; updateNested('yeu_to_nuoc_ngoai.than_nhan', updated);
                         }} />
                         <input type="text" placeholder="Nước nào" className="w-1/4 p-2 bg-white border border-gray-200 rounded text-xs" value={t.nuoc} onChange={e => {
-                            const updated = [...formData.yeu_to_nuoc_ngoai!.than_nhan]; updated[idx].nuoc = e.target.value; updateNested('yeu_to_nuoc_ngoai.than_nhan', updated);
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.than_nhan || [])]; updated[idx] = { ...updated[idx], nuoc: e.target.value }; updateNested('yeu_to_nuoc_ngoai.than_nhan', updated);
                         }} />
                         <button onClick={() => removeRow('yeu_to_nuoc_ngoai.than_nhan', idx)} className="text-red-400">×</button>
                     </div>
                   ))}
-                  {!!formData.yeu_to_nuoc_ngoai?.than_nhan.length && (
+                  {!!(formData.yeu_to_nuoc_ngoai?.than_nhan || []).length && (
                     <button onClick={() => addRow('yeu_to_nuoc_ngoai.than_nhan', {ten: '', qh: '', nuoc: ''})} className="px-4 py-2 bg-gray-600 text-white rounded text-[10px] font-bold mt-2">Thêm người (Ai, Quan hệ, Nước nào)</button>
                   )}
                 </div>
@@ -573,30 +622,30 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                 <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
                   <label className="block text-[11px] font-bold text-gray-700 uppercase mb-4">Đã từng đi nước ngoài chưa?</label>
                   <div className="flex gap-8 mb-4">
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai.length} onChange={() => updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', [])} className="w-4 h-4 accent-[#14452F]" /> Chưa đi</label>
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai.length} onChange={() => { if(!formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai.length) addRow('yeu_to_nuoc_ngoai.di_nuoc_ngoai', {nuoc: '', muc_dich: '', thoi_gian: ''}) }} className="w-4 h-4 accent-[#14452F]" /> Đã đi</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || []).length} onChange={() => updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', [])} className="w-4 h-4 accent-[#14452F]" /> Chưa đi</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || []).length} onChange={() => { if(!formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length) addRow('yeu_to_nuoc_ngoai.di_nuoc_ngoai', {nuoc: '', muc_dich: '', thoi_gian: ''}) }} className="w-4 h-4 accent-[#14452F]" /> Đã đi</label>
                   </div>
                    {/* ADDED TRAVEL HISTORY INPUTS */}
-                  {formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai.map((d: any, idx: number) => (
+                  {(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || []).map((d: any, idx: number) => (
                     <div key={idx} className="flex gap-4 p-3 bg-gray-50 rounded-lg animate-fade-in mb-2">
                         <input type="text" placeholder="Nước nào" className="w-1/3 p-2 bg-white border border-gray-200 rounded text-xs" value={d.nuoc} onChange={e => {
-                            const updated = [...formData.yeu_to_nuoc_ngoai!.di_nuoc_ngoai]; updated[idx].nuoc = e.target.value; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', updated);
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])]; updated[idx] = { ...updated[idx], nuoc: e.target.value }; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', updated);
                         }} />
                         <input type="text" placeholder="Mục đích" className="w-1/3 p-2 bg-white border border-gray-200 rounded text-xs" value={d.muc_dich} onChange={e => {
-                            const updated = [...formData.yeu_to_nuoc_ngoai!.di_nuoc_ngoai]; updated[idx].muc_dich = e.target.value; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', updated);
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])]; updated[idx] = { ...updated[idx], muc_dich: e.target.value }; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', updated);
                         }} />
                         <input type="text" placeholder="Thời gian" className="w-1/3 p-2 bg-white border border-gray-200 rounded text-xs" value={d.thoi_gian} onChange={e => {
-                            const updated = [...formData.yeu_to_nuoc_ngoai!.di_nuoc_ngoai]; updated[idx].thoi_gian = e.target.value; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', updated);
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])]; updated[idx] = { ...updated[idx], thoi_gian: e.target.value }; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', updated);
                         }} />
                         <button onClick={() => removeRow('yeu_to_nuoc_ngoai.di_nuoc_ngoai', idx)} className="text-red-400">×</button>
                     </div>
                   ))}
-                  {!!formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai.length && (
+                  {!!(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || []).length && (
                     <div className="space-y-4 mt-2">
                         <button onClick={() => addRow('yeu_to_nuoc_ngoai.di_nuoc_ngoai', {nuoc: '', muc_dich: '', thoi_gian: ''})} className="px-4 py-2 bg-gray-600 text-white rounded text-[10px] font-bold">Thêm lịch sử</button>
                         <div className="p-3 bg-red-50 rounded-lg border border-red-100">
                             <label className="block text-[11px] font-bold text-red-600 uppercase mb-2">Có vi phạm gì khi đang ở nước ngoài không?</label>
-                            <textarea className="w-full p-3 border border-gray-200 rounded-lg text-xs" rows={2} placeholder="Nếu có ghi rõ..." value={formData.vi_pham_nuoc_ngoai} onChange={e => setFormData({...formData, vi_pham_nuoc_ngoai: e.target.value})} />
+                            <textarea className="w-full p-3 border border-gray-200 rounded-lg text-xs" rows={2} placeholder="Nếu có ghi rõ..." value={formData.vi_pham_nuoc_ngoai || ''} onChange={e => setFormData({...formData, vi_pham_nuoc_ngoai: e.target.value})} />
                         </div>
                     </div>
                   )}
@@ -606,28 +655,28 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                   <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
                     <label className="block text-[11px] font-bold text-gray-700 uppercase mb-4">Đã có hộ chiếu chưa?</label>
                     <div className="flex gap-8">
-                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.yeu_to_nuoc_ngoai?.ho_chieu.da_co} onChange={() => updateNested('yeu_to_nuoc_ngoai.ho_chieu.da_co', false)} className="w-4 h-4 accent-[#14452F]" /> Chưa</label>
-                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={formData.yeu_to_nuoc_ngoai?.ho_chieu.da_co} onChange={() => updateNested('yeu_to_nuoc_ngoai.ho_chieu.da_co', true)} className="w-4 h-4 accent-[#14452F]" /> Đã có</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.yeu_to_nuoc_ngoai?.ho_chieu?.da_co} onChange={() => updateNested('yeu_to_nuoc_ngoai.ho_chieu.da_co', false)} className="w-4 h-4 accent-[#14452F]" /> Chưa</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!formData.yeu_to_nuoc_ngoai?.ho_chieu?.da_co} onChange={() => updateNested('yeu_to_nuoc_ngoai.ho_chieu.da_co', true)} className="w-4 h-4 accent-[#14452F]" /> Đã có</label>
                     </div>
-                    {/* ADDED PASSPORT DETAIL INPUT */}
-                    {formData.yeu_to_nuoc_ngoai?.ho_chieu.da_co && (
+                    {/* PASSPORT DETAIL */}
+                    {formData.yeu_to_nuoc_ngoai?.ho_chieu?.da_co && (
                         <div className="mt-4 animate-fade-in">
                             <label className="block text-[10px] font-bold text-gray-500 mb-1">Dự định đi nước nào?</label>
-                            <input type="text" className="w-full p-2 border border-gray-200 rounded text-xs" value={formData.yeu_to_nuoc_ngoai.ho_chieu.du_dinh_nuoc} onChange={e => updateNested('yeu_to_nuoc_ngoai.ho_chieu.du_dinh_nuoc', e.target.value)} />
+                            <input type="text" className="w-full p-2 border border-gray-200 rounded text-xs" value={formData.yeu_to_nuoc_ngoai?.ho_chieu?.du_dinh_nuoc || ''} onChange={e => updateNested('yeu_to_nuoc_ngoai.ho_chieu.du_dinh_nuoc', e.target.value)} />
                         </div>
                     )}
                   </div>
                   <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
                     <label className="block text-[11px] font-bold text-gray-700 uppercase mb-4 leading-relaxed">Bản thân đã hoặc đang làm thủ tục xuất cảnh định cư?</label>
                     <div className="flex gap-8">
-                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu.dang_lam_thu_tuc} onChange={() => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.dang_lam_thu_tuc', false)} className="w-4 h-4 accent-[#14452F]" /> Không</label>
-                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu.dang_lam_thu_tuc} onChange={() => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.dang_lam_thu_tuc', true)} className="w-4 h-4 accent-[#14452F]" /> Có</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.dang_lam_thu_tuc} onChange={() => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.dang_lam_thu_tuc', false)} className="w-4 h-4 accent-[#14452F]" /> Không</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.dang_lam_thu_tuc} onChange={() => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.dang_lam_thu_tuc', true)} className="w-4 h-4 accent-[#14452F]" /> Có</label>
                     </div>
-                    {/* ADDED IMMIGRATION DETAIL INPUTS */}
-                    {formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu.dang_lam_thu_tuc && (
+                    {/* IMMIGRATION DETAIL */}
+                    {formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.dang_lam_thu_tuc && (
                         <div className="space-y-3 mt-4 animate-fade-in">
-                            <input type="text" placeholder="Nước định cư" className="w-full p-2 border border-gray-200 rounded text-xs" value={formData.yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.nuoc} onChange={e => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.nuoc', e.target.value)} />
-                            <input type="text" placeholder="Người bảo lãnh" className="w-full p-2 border border-gray-200 rounded text-xs" value={formData.yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.nguoi_bao_lanh} onChange={e => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.nguoi_bao_lanh', e.target.value)} />
+                            <input type="text" placeholder="Nước định cư" className="w-full p-2 border border-gray-200 rounded text-xs" value={formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.nuoc || ''} onChange={e => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.nuoc', e.target.value)} />
+                            <input type="text" placeholder="Người bảo lãnh" className="w-full p-2 border border-gray-200 rounded text-xs" value={formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.nguoi_bao_lanh || ''} onChange={e => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.nguoi_bao_lanh', e.target.value)} />
                         </div>
                     )}
                   </div>
@@ -637,7 +686,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* Tab 5: Security (Image 7, 8, 9) */}
+        {/* --- TAB 5: LỊCH SỬ & TỆ NẠN --- */}
         {activeTab === 5 && (
           <div className="animate-fade-in space-y-8">
             <h3 className="flex items-center gap-2 text-red-700 font-black uppercase text-xs mb-6">
@@ -652,19 +701,19 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                 <div className="flex justify-between items-center">
                   <h4 className="text-[11px] font-black text-red-800 uppercase">1. Vi phạm tại địa phương (trước nhập ngũ)</h4>
                   <div className="flex gap-6">
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.lich_su_vi_pham?.vi_pham_dia_phuong.co_khong} onChange={() => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.co_khong', false)} className="accent-red-600" /> Không vi phạm</label>
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={formData.lich_su_vi_pham?.vi_pham_dia_phuong.co_khong} onChange={() => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.co_khong', true)} className="accent-red-600" /> Có vi phạm</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong} onChange={() => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.co_khong', false)} className="accent-red-600" /> Không vi phạm</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!formData.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong} onChange={() => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.co_khong', true)} className="accent-red-600" /> Có vi phạm</label>
                   </div>
                 </div>
-                {formData.lich_su_vi_pham?.vi_pham_dia_phuong.co_khong && (
+                {formData.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong && (
                   <div className="p-5 bg-gray-50/50 rounded-xl space-y-4">
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2">Nội dung chi tiết (Thời gian, nội dung, ở đâu?)</label>
-                      <textarea className="w-full p-4 bg-white border border-gray-200 rounded-xl text-xs" rows={2} placeholder="VD: Năm 2020 đánh nhau gây thương tích tại xã X..." value={formData.lich_su_vi_pham.vi_pham_dia_phuong.noi_dung} onChange={e => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.noi_dung', e.target.value)} />
+                      <textarea className="w-full p-4 bg-white border border-gray-200 rounded-xl text-xs" rows={2} placeholder="VD: Năm 2020 đánh nhau gây thương tích tại xã X..." value={formData.lich_su_vi_pham.vi_pham_dia_phuong.noi_dung || ''} onChange={e => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.noi_dung', e.target.value)} />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2">Kết quả giải quyết</label>
-                      <textarea className="w-full p-3 bg-white border border-gray-200 rounded-xl text-xs" rows={1} placeholder="Đã bị xử phạt hành chính / Đã hòa giải..." value={formData.lich_su_vi_pham.vi_pham_dia_phuong.ket_qua} onChange={e => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.ket_qua', e.target.value)} />
+                      <textarea className="w-full p-3 bg-white border border-gray-200 rounded-xl text-xs" rows={1} placeholder="Đã bị xử phạt hành chính / Đã hòa giải..." value={formData.lich_su_vi_pham.vi_pham_dia_phuong.ket_qua || ''} onChange={e => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.ket_qua', e.target.value)} />
                     </div>
                   </div>
                 )}
@@ -675,23 +724,23 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                 <div className="flex justify-between items-center">
                   <h4 className="text-[11px] font-black text-red-800 uppercase">2. Tham gia đánh bạc / Cá độ</h4>
                   <div className="flex gap-6">
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.lich_su_vi_pham?.danh_bac.co_khong} onChange={() => updateNested('lich_su_vi_pham.danh_bac.co_khong', false)} className="accent-red-600" /> Chưa từng</label>
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={formData.lich_su_vi_pham?.danh_bac.co_khong} onChange={() => updateNested('lich_su_vi_pham.danh_bac.co_khong', true)} className="accent-red-600" /> Đã từng tham gia</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.lich_su_vi_pham?.danh_bac?.co_khong} onChange={() => updateNested('lich_su_vi_pham.danh_bac.co_khong', false)} className="accent-red-600" /> Chưa từng</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!formData.lich_su_vi_pham?.danh_bac?.co_khong} onChange={() => updateNested('lich_su_vi_pham.danh_bac.co_khong', true)} className="accent-red-600" /> Đã từng tham gia</label>
                   </div>
                 </div>
-                {formData.lich_su_vi_pham?.danh_bac.co_khong && (
+                {formData.lich_su_vi_pham?.danh_bac?.co_khong && (
                   <div className="p-5 bg-gray-50/50 rounded-xl grid grid-cols-2 gap-6">
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Hình thức chơi</label>
-                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="VD: Lô đề, bóng đá, xóc đĩa..." value={formData.lich_su_vi_pham.danh_bac.hinh_thuc} onChange={e => updateNested('lich_su_vi_pham.danh_bac.hinh_thuc', e.target.value)} />
+                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="VD: Lô đề, bóng đá, xóc đĩa..." value={formData.lich_su_vi_pham.danh_bac.hinh_thuc || ''} onChange={e => updateNested('lich_su_vi_pham.danh_bac.hinh_thuc', e.target.value)} />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Chơi với ai?</label>
-                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="VD: Bạn bè xã hội, người lạ..." value={formData.lich_su_vi_pham.danh_bac.doi_tuong} onChange={e => updateNested('lich_su_vi_pham.danh_bac.doi_tuong', e.target.value)} />
+                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="VD: Bạn bè xã hội, người lạ..." value={formData.lich_su_vi_pham.danh_bac.doi_tuong || ''} onChange={e => updateNested('lich_su_vi_pham.danh_bac.doi_tuong', e.target.value)} />
                     </div>
                     <div className="col-span-2">
                       <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Địa điểm / Thời gian</label>
-                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Chơi ở đâu? Khi nào?" value={formData.lich_su_vi_pham.danh_bac.dia_diem} onChange={e => updateNested('lich_su_vi_pham.danh_bac.dia_diem', e.target.value)} />
+                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Chơi ở đâu? Khi nào?" value={formData.lich_su_vi_pham.danh_bac.dia_diem || ''} onChange={e => updateNested('lich_su_vi_pham.danh_bac.dia_diem', e.target.value)} />
                     </div>
                   </div>
                 )}
@@ -702,35 +751,35 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                 <div className="flex justify-between items-center">
                   <h4 className="text-[11px] font-black text-red-800 uppercase">3. Sử dụng Ma túy / Chất gây nghiện</h4>
                   <div className="flex gap-6">
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.lich_su_vi_pham?.ma_tuy.co_khong} onChange={() => updateNested('lich_su_vi_pham.ma_tuy.co_khong', false)} className="accent-red-600" /> Chưa từng</label>
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={formData.lich_su_vi_pham?.ma_tuy.co_khong} onChange={() => updateNested('lich_su_vi_pham.ma_tuy.co_khong', true)} className="accent-red-600" /> Đã từng sử dụng</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.lich_su_vi_pham?.ma_tuy?.co_khong} onChange={() => updateNested('lich_su_vi_pham.ma_tuy.co_khong', false)} className="accent-red-600" /> Chưa từng</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!formData.lich_su_vi_pham?.ma_tuy?.co_khong} onChange={() => updateNested('lich_su_vi_pham.ma_tuy.co_khong', true)} className="accent-red-600" /> Đã từng sử dụng</label>
                   </div>
                 </div>
-                {formData.lich_su_vi_pham?.ma_tuy.co_khong && (
+                {formData.lich_su_vi_pham?.ma_tuy?.co_khong && (
                   <div className="p-5 bg-gray-50/50 rounded-xl grid grid-cols-3 gap-6">
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Thời gian (từ khi nào?)</label>
-                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.lich_su_vi_pham.ma_tuy.thoi_gian} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.thoi_gian', e.target.value)} />
+                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.lich_su_vi_pham.ma_tuy.thoi_gian || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.thoi_gian', e.target.value)} />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Loại chất</label>
-                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Cỏ, Ke, Đá..." value={formData.lich_su_vi_pham.ma_tuy.loai} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.loai', e.target.value)} />
+                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Cỏ, Ke, Đá..." value={formData.lich_su_vi_pham.ma_tuy.loai || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.loai', e.target.value)} />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Số lần sử dụng</label>
-                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.lich_su_vi_pham.ma_tuy.so_lan} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.so_lan', e.target.value)} />
+                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.lich_su_vi_pham.ma_tuy.so_lan || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.so_lan', e.target.value)} />
                     </div>
                     <div className="col-span-2">
                       <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Sử dụng với ai?</label>
-                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.lich_su_vi_pham.ma_tuy.doi_tuong} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.doi_tuong', e.target.value)} />
+                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.lich_su_vi_pham.ma_tuy.doi_tuong || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.doi_tuong', e.target.value)} />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Đã bị xử lý chưa?</label>
-                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Có/Không" value={formData.lich_su_vi_pham.ma_tuy.xu_ly} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.xu_ly', e.target.value)} />
+                      <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Có/Không" value={formData.lich_su_vi_pham.ma_tuy.xu_ly || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.xu_ly', e.target.value)} />
                     </div>
                     <div className="col-span-3">
                       <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Hình thức xử lý (nếu có) & Chi tiết</label>
-                      <textarea className="w-full p-3 bg-white border border-gray-200 rounded-xl text-xs" rows={2} placeholder="Ghi rõ hình thức xử lý..." value={formData.lich_su_vi_pham.ma_tuy.hinh_thuc_xu_ly} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.hinh_thuc_xu_ly', e.target.value)} />
+                      <textarea className="w-full p-3 bg-white border border-gray-200 rounded-xl text-xs" rows={2} placeholder="Ghi rõ hình thức xử lý..." value={formData.lich_su_vi_pham.ma_tuy.hinh_thuc_xu_ly || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.hinh_thuc_xu_ly', e.target.value)} />
                     </div>
                   </div>
                 )}
@@ -739,7 +788,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* Tab 6: Finance & Health (Image 10) */}
+        {/* --- TAB 6: TÀI CHÍNH & SỨC KHỎE --- */}
         {activeTab === 6 && (
           <div className="animate-fade-in space-y-10">
             <section>
@@ -752,45 +801,45 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                   <div className="flex justify-between items-center">
                     <h4 className="text-[11px] font-black text-yellow-800 uppercase">1. Vay nợ (Cá nhân / Tổ chức / Tín dụng đen...)</h4>
                     <div className="flex gap-6">
-                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.tai_chinh_suc_khoe?.vay_no.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.vay_no.co_khong', false)} className="accent-yellow-700" /> Không</label>
-                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={formData.tai_chinh_suc_khoe?.vay_no.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.vay_no.co_khong', true)} className="accent-yellow-700" /> Có</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.tai_chinh_suc_khoe?.vay_no?.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.vay_no.co_khong', false)} className="accent-yellow-700" /> Không</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!formData.tai_chinh_suc_khoe?.vay_no?.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.vay_no.co_khong', true)} className="accent-yellow-700" /> Có</label>
                     </div>
                   </div>
-                  {formData.tai_chinh_suc_khoe?.vay_no.co_khong && (
+                  {formData.tai_chinh_suc_khoe?.vay_no?.co_khong && (
                     <div className="grid grid-cols-2 gap-x-8 gap-y-4 p-5 bg-white/60 border border-yellow-100 rounded-xl">
                       <div>
                         <label className="block text-[10px] font-bold text-gray-600 mb-1">Ai đứng tên vay?</label>
-                        <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Bản thân / Vợ / Bố mẹ..." value={formData.tai_chinh_suc_khoe.vay_no.nguoi_dung_ten} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.nguoi_dung_ten', e.target.value)} />
+                        <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Bản thân / Vợ / Bố mẹ..." value={formData.tai_chinh_suc_khoe.vay_no.nguoi_dung_ten || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.nguoi_dung_ten', e.target.value)} />
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-gray-600 mb-1">Ai là người trả nợ?</label>
-                        <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Người chịu trách nhiệm trả" value={formData.tai_chinh_suc_khoe.vay_no.nguoi_tra} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.nguoi_tra', e.target.value)} />
+                        <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Người chịu trách nhiệm trả" value={formData.tai_chinh_suc_khoe.vay_no.nguoi_tra || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.nguoi_tra', e.target.value)} />
                       </div>
                       <div className="col-span-1">
                         <label className="block text-[10px] font-bold text-gray-600 mb-1">Vay của ai / Tổ chức nào?</label>
-                        <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.tai_chinh_suc_khoe.vay_no.ai_vay} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.ai_vay', e.target.value)} />
+                        <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.tai_chinh_suc_khoe.vay_no.ai_vay || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.ai_vay', e.target.value)} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-[10px] font-bold text-gray-600 mb-1">Số tiền (VNĐ)</label>
-                          <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs font-bold" value={formData.tai_chinh_suc_khoe.vay_no.so_tien} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.so_tien', e.target.value)} />
+                          <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs font-bold" value={formData.tai_chinh_suc_khoe.vay_no.so_tien || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.so_tien', e.target.value)} />
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-gray-600 mb-1">Hạn trả</label>
-                          <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.tai_chinh_suc_khoe.vay_no.han_tra} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.han_tra', e.target.value)} />
+                          <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.tai_chinh_suc_khoe.vay_no.han_tra || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.han_tra', e.target.value)} />
                         </div>
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-gray-600 mb-1">Hình thức vay</label>
-                        <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Tín chấp / Thế chấp / App..." value={formData.tai_chinh_suc_khoe.vay_no.hinh_thuc} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.hinh_thuc', e.target.value)} />
+                        <input type="text" className="w-full p-2 border border-gray-200 rounded-lg text-xs" placeholder="Tín chấp / Thế chấp / App..." value={formData.tai_chinh_suc_khoe.vay_no.hinh_thuc || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.hinh_thuc', e.target.value)} />
                       </div>
                       <div className="flex items-center gap-3 pt-6">
-                        <input type="checkbox" checked={formData.tai_chinh_suc_khoe.vay_no.gia_dinh_biet} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.gia_dinh_biet', e.target.checked)} className="w-4 h-4 accent-yellow-700" />
+                        <input type="checkbox" checked={!!formData.tai_chinh_suc_khoe.vay_no.gia_dinh_biet} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.gia_dinh_biet', e.target.checked)} className="w-4 h-4 accent-yellow-700" />
                         <label className="text-[10px] font-bold text-gray-700 uppercase">Gia đình đã biết chuyện vay nợ</label>
                       </div>
                       <div className="col-span-2">
                         <label className="block text-[10px] font-bold text-gray-600 mb-1">Mục đích vay & Chi tiết khác</label>
-                        <textarea className="w-full p-3 bg-white border border-gray-200 rounded-xl text-xs" rows={2} placeholder="Vay để làm gì? ..." value={formData.tai_chinh_suc_khoe.vay_no.muc_dich} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.muc_dich', e.target.value)} />
+                        <textarea className="w-full p-3 bg-white border border-gray-200 rounded-xl text-xs" rows={2} placeholder="Vay để làm gì? ..." value={formData.tai_chinh_suc_khoe.vay_no.muc_dich || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.muc_dich', e.target.value)} />
                       </div>
                     </div>
                   )}
@@ -800,14 +849,14 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                   <div className="flex justify-between items-center">
                     <h4 className="text-[11px] font-black text-gray-800 uppercase">2. Kinh doanh & Bất động sản</h4>
                     <div className="flex gap-6">
-                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.tai_chinh_suc_khoe?.kinh_doanh.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.kinh_doanh.co_khong', false)} className="accent-[#14452F]" /> Không</label>
-                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={formData.tai_chinh_suc_khoe?.kinh_doanh.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.kinh_doanh.co_khong', true)} className="accent-[#14452F]" /> Có</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.tai_chinh_suc_khoe?.kinh_doanh?.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.kinh_doanh.co_khong', false)} className="accent-[#14452F]" /> Không</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!formData.tai_chinh_suc_khoe?.kinh_doanh?.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.kinh_doanh.co_khong', true)} className="accent-[#14452F]" /> Có</label>
                     </div>
                   </div>
-                  {formData.tai_chinh_suc_khoe?.kinh_doanh.co_khong && (
+                  {formData.tai_chinh_suc_khoe?.kinh_doanh?.co_khong && (
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Chi tiết đối tác & Địa chỉ kinh doanh</label>
-                      <textarea className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl text-xs" rows={2} placeholder="Tên tổ chức/cá nhân, tên công ty, địa chỉ cụ thể..." value={formData.tai_chinh_suc_khoe.kinh_doanh.chi_tiet} onChange={e => updateNested('tai_chinh_suc_khoe.kinh_doanh.chi_tiet', e.target.value)} />
+                      <textarea className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl text-xs" rows={2} placeholder="Tên tổ chức/cá nhân, tên công ty, địa chỉ cụ thể..." value={formData.tai_chinh_suc_khoe.kinh_doanh.chi_tiet || ''} onChange={e => updateNested('tai_chinh_suc_khoe.kinh_doanh.chi_tiet', e.target.value)} />
                     </div>
                   )}
                 </div>
@@ -823,19 +872,19 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                 <div className="flex justify-between items-center mb-4">
                   <label className="text-[11px] font-bold text-gray-700 uppercase">Đã từng mắc Covid-19 chưa?</label>
                   <div className="flex gap-6">
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.tai_chinh_suc_khoe?.covid_ban_than.da_mac} onChange={() => updateNested('tai_chinh_suc_khoe.covid_ban_than.da_mac', false)} className="accent-green-700" /> Không</label>
-                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={formData.tai_chinh_suc_khoe?.covid_ban_than.da_mac} onChange={() => updateNested('tai_chinh_suc_khoe.covid_ban_than.da_mac', true)} className="accent-green-700" /> Có</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!formData.tai_chinh_suc_khoe?.covid_ban_than?.da_mac} onChange={() => updateNested('tai_chinh_suc_khoe.covid_ban_than.da_mac', false)} className="accent-green-700" /> Không</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="radio" checked={!!formData.tai_chinh_suc_khoe?.covid_ban_than?.da_mac} onChange={() => updateNested('tai_chinh_suc_khoe.covid_ban_than.da_mac', true)} className="accent-green-700" /> Có</label>
                   </div>
                 </div>
-                {formData.tai_chinh_suc_khoe?.covid_ban_than.da_mac && (
-                  <input type="text" placeholder="Thời gian mắc bệnh (Tháng/Năm)" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.tai_chinh_suc_khoe.covid_ban_than.thoi_gian} onChange={e => updateNested('tai_chinh_suc_khoe.covid_ban_than.thoi_gian', e.target.value)} />
+                {formData.tai_chinh_suc_khoe?.covid_ban_than?.da_mac && (
+                  <input type="text" placeholder="Thời gian mắc bệnh (Tháng/Năm)" className="w-full p-2 border border-gray-200 rounded-lg text-xs" value={formData.tai_chinh_suc_khoe.covid_ban_than.thoi_gian || ''} onChange={e => updateNested('tai_chinh_suc_khoe.covid_ban_than.thoi_gian', e.target.value)} />
                 )}
               </div>
             </section>
           </div>
         )}
 
-        {/* Tab 7: Commitments (Image 11) */}
+        {/* --- TAB 7: CAM KẾT & NGUYỆN VỌNG --- */}
         {activeTab === 7 && (
           <div className="animate-fade-in space-y-10 max-w-4xl mx-auto py-10">
             <h3 className="flex items-center justify-center gap-2 text-[#14452F] font-black uppercase text-xl mb-12 tracking-widest">
@@ -847,7 +896,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
               <div className="space-y-4">
                 <h4 className="text-sm font-black text-gray-800 uppercase tracking-widest border-b-2 border-gray-100 pb-2">II. Ý KIẾN VÀ NGUYỆN VỌNG CỦA BẢN THÂN</h4>
                 <p className="text-gray-500 text-[11px] font-medium leading-relaxed italic">Đồng chí có ý kiến, đề xuất hoặc hoàn cảnh đặc biệt nào cần đơn vị quan tâm giúp đỡ không?</p>
-                <textarea className="w-full p-8 bg-gray-50/50 border border-gray-200 rounded-[2.5rem] outline-none shadow-inner min-h-[300px] leading-relaxed text-sm focus:ring-4 ring-green-50 transition-all" value={formData.y_kien_nguyen_vong} onChange={e => setFormData({...formData, y_kien_nguyen_vong: e.target.value})} placeholder="Ghi rõ nội dung..." />
+                <textarea className="w-full p-8 bg-gray-50/50 border border-gray-200 rounded-[2.5rem] outline-none shadow-inner min-h-[300px] leading-relaxed text-sm focus:ring-4 ring-green-50 transition-all" value={formData.y_kien_nguyen_vong || ''} onChange={e => setFormData({...formData, y_kien_nguyen_vong: e.target.value})} placeholder="Ghi rõ nội dung..." />
               </div>
               
               <div className="space-y-6">
@@ -860,7 +909,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* Tab 8: Extra Info (Image 12) */}
+        {/* --- TAB 8: THÔNG TIN BỔ SUNG --- */}
         {activeTab === 8 && (
           <div className="animate-fade-in space-y-10">
             <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">

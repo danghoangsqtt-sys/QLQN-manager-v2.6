@@ -37,8 +37,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const refreshData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Lấy Units (Đồng bộ từ LocalStorage)
-      const unitList = db.getUnits();
+      // 1. Lấy Units (Bất đồng bộ từ DB) - SỬA LỖI: Thêm await
+      const unitList = await db.getUnits();
       setUnits(unitList);
 
       // 2. Lấy Personnel (Bất đồng bộ từ SQLite/Electron)

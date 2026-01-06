@@ -1,6 +1,5 @@
-
-import React, { useState } from 'react';
-import { AppMode } from './types';
+import React, { useState, useEffect } from 'react';
+import { AppMode, Unit } from './types';
 import Dashboard from './components/Dashboard';
 import PersonnelForm from './components/PersonnelForm';
 import { db } from './store';
@@ -10,9 +9,30 @@ const App: React.FC = () => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  
+  // State lưu danh sách đơn vị (Dùng cho Kiosk Mode)
+  const [units, setUnits] = useState<Unit[]>([]);
+
+  // Effect: Tải danh sách đơn vị khi khởi động App
+  useEffect(() => {
+    const loadUnits = async () => {
+      try {
+        const data = await db.getUnits();
+        setUnits(data);
+      } catch (e) {
+        console.error("Lỗi tải danh sách đơn vị:", e);
+      }
+    };
+    loadUnits();
+  }, []);
 
   const handleCommanderLogin = () => {
-    if (password === '123456' || password === localStorage.getItem('admin_password')) {
+    // SỬA LỖI BẢO MẬT: Loại bỏ logic 'OR' với mật khẩu cứng.
+    // Lấy mật khẩu từ cài đặt, nếu chưa thiết lập thì mặc định là '123456'.
+    // Khi người dùng đổi pass, '123456' sẽ không còn hiệu lực.
+    const currentPassword = localStorage.getItem('admin_password') || '123456';
+
+    if (password === currentPassword) {
       setMode(AppMode.COMMANDER);
       setShowLoginModal(false);
       setError('');
@@ -136,7 +156,8 @@ const App: React.FC = () => {
         </header>
         <div className="flex-1 overflow-y-auto px-4 pb-20 -mt-10 scrollbar-hide">
           <div className="max-w-6xl mx-auto bg-white rounded-3xl shadow-2xl p-2">
-            <PersonnelForm units={db.getUnits()} onClose={() => { alert('Dữ liệu đã được chuyển vào hàng đợi duyệt!'); setMode(AppMode.LOGIN); }} />
+            {/* Sử dụng state units thay vì gọi db.getUnits() trực tiếp */}
+            <PersonnelForm units={units} onClose={() => { alert('Dữ liệu đã được chuyển vào hàng đợi duyệt!'); setMode(AppMode.LOGIN); }} />
           </div>
         </div>
       </div>

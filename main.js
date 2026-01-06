@@ -3,24 +3,40 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const isDev = require('electron-is-dev');
 const Database = require('better-sqlite3');
+const fs = require('fs');
 
-// Khởi tạo Database SQLite trong thư mục lưu trữ của App
-const dbPath = path.join(app.getPath('userData'), 'military_records.db');
-const db = new Database(dbPath);
+// Đảm bảo thư mục dữ liệu tồn tại
+const userDataPath = app.getPath('userData');
+if (!fs.existsSync(userDataPath)) {
+  fs.mkdirSync(userDataPath, { recursive: true });
+}
 
-// Tạo cấu trúc bảng nếu chưa có
-db.exec(`
-  CREATE TABLE IF NOT EXISTS personnel (
-    id TEXT PRIMARY KEY,
-    data TEXT,
-    createdAt INTEGER
-  );
-  CREATE TABLE IF NOT EXISTS units (
-    id TEXT PRIMARY KEY,
-    name TEXT,
-    parentId TEXT
-  );
-`);
+const dbPath = path.join(userDataPath, 'military_records.db');
+let db;
+
+try {
+  db = new Database(dbPath, { verbose: isDev ? console.log : null });
+  
+  // Tối ưu hiệu năng SQLite
+  db.pragma('journal_mode = WAL');
+  db.pragma('synchronous = NORMAL');
+
+  // Khởi tạo bảng
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS personnel (
+      id TEXT PRIMARY KEY,
+      data TEXT,
+      createdAt INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS units (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      parentId TEXT
+    );
+  `);
+} catch (err) {
+  console.error('Không thể khởi tạo cơ sở dữ liệu:', err);
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -46,18 +62,29 @@ function createWindow() {
   }
 }
 
-// Xử lý các lệnh từ React Store qua IPC
+// IPC Handlers
 ipcMain.handle('db-get-personnel', async () => {
-  return db.prepare('SELECT * FROM personnel ORDER BY createdAt DESC').all();
+  try {
+    return db.prepare('SELECT * FROM personnel ORDER BY createdAt DESC').all();
+  } catch (err) {
+    console.error('Lỗi truy vấn personnel:', err);
+    return [];
+  }
 });
 
 ipcMain.handle('db-save-personnel', async (event, { id, data }) => {
-  const stmt = db.prepare('INSERT OR REPLACE INTO personnel (id, data, createdAt) VALUES (?, ?, ?)');
-  return stmt.run(id, JSON.stringify(data), Date.now());
+  try {
+    const stmt = db.prepare('INSERT OR REPLACE INTO personnel (id, data, createdAt) VALUES (?, ?, ?)');
+    return stmt.run(id, JSON.stringify(data), data.createdAt || Date.now());
+  } catch (err) {
+    console.error('Lỗi lưu personnel:', err);
+    throw err;
+  }
 });
 
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
+  if (db) db.close();
   if (process.platform !== 'darwin') app.quit();
 });

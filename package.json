@@ -8,10 +8,10 @@
   "scripts": {
     "start": "electron .",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "dist": "electron-builder"
+    "dist": "npm run rebuild && electron-builder"
   },
   "dependencies": {
-    "better-sqlite3": "^11.0.0",
+    "better-sqlite3": "^11.10.0",
     "electron-is-dev": "^2.0.0"
   },
   "devDependencies": {
@@ -47,6 +47,7 @@
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "Quản lý Quân nhân QNManager"
     },
-    "asar": true
+    "asar": true,
+    "npmRebuild": false
   }
 }

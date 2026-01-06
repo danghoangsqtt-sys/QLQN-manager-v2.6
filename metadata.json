@@ -1,7 +1,4 @@
 {
   "name": "Copy of Hệ thống Quản lý Nhân sự Quân đội - QNManager",
   "description": "Ứng dụng quản lý hồ sơ quân nhân nội bộ chuyên nghiệp, hỗ trợ chế độ chỉ huy và Kiosk tự phục vụ.",
-  "requestFramePermissions": [
-    "camera"
-  ]
 }

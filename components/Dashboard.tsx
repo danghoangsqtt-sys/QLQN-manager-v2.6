@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MilitaryPersonnel, Unit } from '../types';
 import { db } from '../store';
 import PersonnelForm from './PersonnelForm';
@@ -11,14 +11,16 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
+  // --- Data States ---
   const [personnel, setPersonnel] = useState<MilitaryPersonnel[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
+  const [loading, setLoading] = useState(false);
   
-  // Basic States
+  // --- Filter States ---
   const [search, setSearch] = useState('');
   const [filterUnit, setFilterUnit] = useState('all');
   
-  // Advanced Filter States (New)
+  // --- Advanced Filter States ---
   const [isAdvancedFilter, setIsAdvancedFilter] = useState(false);
   const [filterRank, setFilterRank] = useState('all');
   const [filterSecurity, setFilterSecurity] = useState('all');
@@ -26,28 +28,45 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   const [filterMarital, setFilterMarital] = useState('all');
   const [filterPolitical, setFilterPolitical] = useState('all');
 
+  // --- View & Modal States ---
   const [showForm, setShowForm] = useState(false);
   const [editingPerson, setEditingPerson] = useState<MilitaryPersonnel | undefined>();
   const [activeView, setActiveView] = useState<'list' | 'units' | 'input' | 'settings' | 'debug'>('list');
 
-  const refreshData = () => {
-    setPersonnel(db.getPersonnel({ 
-      unitId: filterUnit, 
-      keyword: search,
-      // Truyền các tham số lọc mới vào store
-      rank: filterRank,
-      security: filterSecurity,
-      education: filterEducation,
-      marital: filterMarital,
-      political: filterPolitical
-    }));
-    setUnits(db.getUnits());
-  };
+  // --- Core Data Fetching (Async) ---
+  const refreshData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // 1. Lấy Units (Đồng bộ từ LocalStorage)
+      const unitList = db.getUnits();
+      setUnits(unitList);
 
+      // 2. Lấy Personnel (Bất đồng bộ từ SQLite/Electron)
+      const data = await db.getPersonnel({ 
+        unitId: filterUnit, 
+        keyword: search,
+        rank: filterRank,
+        security: filterSecurity,
+        education: filterEducation,
+        marital: filterMarital,
+        political: filterPolitical
+      });
+      
+      setPersonnel(data);
+    } catch (error) {
+      console.error("Lỗi tải dữ liệu:", error);
+    } finally {
+      // Thêm chút delay giả lập để UI mượt mà hơn nếu chạy local quá nhanh
+      setTimeout(() => setLoading(false), 300);
+    }
+  }, [filterUnit, search, filterRank, filterSecurity, filterEducation, filterMarital, filterPolitical]);
+
+  // Effect: Gọi refreshData khi filter thay đổi
   useEffect(() => {
     refreshData();
-  }, [filterUnit, search, filterRank, filterSecurity, filterEducation, filterMarital, filterPolitical, activeView]);
+  }, [refreshData, activeView]);
 
+  // Effect: Phím tắt
   useEffect(() => {
     const handleShortcuts = (e: KeyboardEvent) => {
       if (e.altKey && e.key === '1') setActiveView('list');
@@ -62,9 +81,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     };
     window.addEventListener('keydown', handleShortcuts);
     return () => window.removeEventListener('keydown', handleShortcuts);
-  }, [onLogout]);
+  }, [onLogout, refreshData]);
 
-  // --- CHỨC NĂNG XUẤT CSV CHUẨN HÓA ---
+  // --- Handlers ---
+  
+  const handleDelete = async (id: string, name: string) => {
+    if (window.confirm(`Xác nhận xóa hồ sơ đồng chí: ${name}? Hành động này không thể hoàn tác.`)) {
+      await db.deletePersonnel(id);
+      refreshData();
+    }
+  };
+
   const handleExportCSV = () => {
     if (personnel.length === 0) {
       alert('Không có dữ liệu để xuất!');
@@ -131,17 +158,21 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
-    db.log('INFO', `Đã xuất danh sách CSV (${personnel.length} hồ sơ) - Đơn vị: ${unitName}`);
   };
 
   return (
-    <div className="flex h-screen bg-[#f4f6f8] font-sans">
-      {/* Sidebar */}
-      <div className="w-64 military-green text-white flex flex-col shadow-2xl z-20 overflow-hidden">
+    <div className="flex h-screen bg-[#f4f6f8] font-sans overflow-hidden">
+      {/* Sidebar - Cố định */}
+      <div className="w-64 military-green text-white flex flex-col shadow-2xl z-20 shrink-0">
         <div className="p-8 bg-black/10 flex items-center gap-3">
           <div className="bg-white/10 p-2 rounded-xl">
-             <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.616 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.715-5.349L11 6.477V17a1 1 0 01-2 0V6.477L6.237 7.582l1.715 5.349a1 1 0 01-.285 1.05A3.989 3.989 0 015 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.738-5.42-1.233-.617a1 1 0 01.894-1.789l1.599.8L9 4.323V3a1 1 0 011-1z"/></svg>
+             {/* Thay thế icon SVG cũ bằng icon tệp hồ sơ hiện đại */}
+             <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 3.5V9h5.5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 17h6" />
+             </svg>
           </div>
           <div>
             <h1 className="text-sm font-black tracking-widest uppercase">QLQN SYSTEM</h1>
@@ -149,7 +180,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
           </div>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1 mt-6">
+        <nav className="flex-1 p-3 space-y-1 mt-6 overflow-y-auto scrollbar-hide">
           <button onClick={() => setActiveView('list')} className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all text-xs font-bold ${activeView === 'list' ? 'nav-link-active' : 'text-white/40 hover:bg-white/5'}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" strokeWidth="2"/></svg>
             Danh Sách (Alt+1)
@@ -173,9 +204,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         </nav>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Header */}
-        <header className="bg-white px-10 py-6 border-b flex justify-between items-center z-10 shadow-sm">
+        <header className="bg-white px-10 py-6 border-b flex justify-between items-center z-10 shadow-sm shrink-0">
           <div>
             <h2 className="text-2xl font-black text-[#14452F] uppercase tracking-tighter">
               {activeView === 'list' ? 'DANH SÁCH QUÂN NHÂN' : 
@@ -183,7 +214,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                activeView === 'settings' ? 'CÀI ĐẶT HỆ THỐNG' : 
                activeView === 'debug' ? 'DIAGNOSTICS & DEBUG' : 'NHẬP LIỆU MỚI'}
             </h2>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Hệ thống quản lý nội bộ bảo mật</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1 flex items-center gap-2">
+              Hệ thống quản lý nội bộ bảo mật 
+              {loading && <span className="text-blue-500 animate-pulse flex items-center gap-1">• Đang đồng bộ dữ liệu...</span>}
+            </p>
           </div>
           <div className="flex items-center gap-10">
             <div className="flex items-center gap-3">
@@ -195,43 +229,52 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                  <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/></svg>
               </div>
             </div>
-            <button onClick={onLogout} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-rose-50 text-rose-400 hover:text-rose-600 transition-all border border-transparent hover:border-rose-100">
+            <button onClick={onLogout} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-rose-50 text-rose-400 hover:text-rose-600 transition-all border border-transparent hover:border-rose-100" title="Đăng xuất">
                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeWidth="2"/></svg>
             </button>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-10 scrollbar-hide bg-[#f8fafc]">
+        <main className="flex-1 overflow-y-auto p-10 scrollbar-hide bg-[#f8fafc] relative">
+          
+          {/* Loading Overlay */}
+          {loading && (
+             <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 z-50">
+                <div className="h-full bg-[#d4af37] animate-progress"></div>
+             </div>
+          )}
+
           {activeView === 'list' && (
-            <div className="space-y-8 animate-fade-in">
+            <div className="space-y-8 animate-fade-in pb-20">
+              
               {/* Filter Bar Nâng Cấp */}
-              <div className="bg-white p-6 rounded-3xl shadow-lg border border-gray-100 mb-8 animate-fade-in">
+              <div className="bg-white p-6 rounded-3xl shadow-lg border border-gray-100 animate-fade-in relative z-20">
                 {/* Hàng 1: Bộ lọc cơ bản */}
                 <div className="flex flex-wrap gap-4 items-end">
                    
                    <div className="w-64">
                       <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase tracking-widest">Đơn vị quản lý</label>
-                      <select className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl font-bold text-xs text-[#14452F] outline-none" value={filterUnit} onChange={e => setFilterUnit(e.target.value)}>
+                      <select className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl font-bold text-xs text-[#14452F] outline-none hover:bg-gray-100 transition-colors cursor-pointer" value={filterUnit} onChange={e => setFilterUnit(e.target.value)}>
                          <option value="all">TOÀN ĐƠN VỊ</option>
                          {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
                    </div>
 
                    <div className="flex-1 min-w-[300px] relative">
-                      <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase tracking-widest">Tìm kiếm (Tên, CCCD, Sở trường)</label>
-                      <input id="mainSearchInput" type="text" placeholder="Nhập từ khóa (VD: Lái xe, Hát, Nguyễn Văn A...)" className="w-full p-3 pl-10 bg-gray-50 border border-gray-100 rounded-xl font-bold text-xs text-[#14452F] focus:ring-2 ring-[#14452F]/10 transition-all outline-none" value={search} onChange={e => setSearch(e.target.value)} />
+                      <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase tracking-widest">Tìm kiếm (Tên, CCCD, SĐT, Sở trường)</label>
+                      <input id="mainSearchInput" type="text" placeholder="Nhập từ khóa tìm kiếm..." className="w-full p-3 pl-10 bg-gray-50 border border-gray-100 rounded-xl font-bold text-xs text-[#14452F] focus:ring-2 ring-[#14452F]/10 transition-all outline-none" value={search} onChange={e => setSearch(e.target.value)} />
                       <div className="absolute left-3 bottom-3 text-gray-400">
                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2"/></svg>
                       </div>
                    </div>
 
-                   {/* Nút bật/tắt bộ lọc nâng cao */}
+                   {/* Toggle Advanced Filter */}
                    <button onClick={() => setIsAdvancedFilter(!isAdvancedFilter)} className={`p-3 rounded-xl border transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-wider h-[42px] ${isAdvancedFilter ? 'bg-[#14452F] text-white border-[#14452F] shadow-lg' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                      <svg className={`w-4 h-4 transition-transform ${isAdvancedFilter ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                       {isAdvancedFilter ? 'Thu gọn' : 'Bộ lọc sâu'}
                    </button>
                    
-                   <div className="w-[1px] h-10 bg-gray-200 mx-2"></div>
+                   <div className="w-[1px] h-10 bg-gray-200 mx-2 hidden md:block"></div>
 
                    <button onClick={handleExportCSV} className="bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 p-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm h-[42px]" title="Xuất Excel CSV">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -245,7 +288,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
 
                 {/* Hàng 2: Bộ lọc chuyên sâu (Ẩn/Hiện) */}
                 {isAdvancedFilter && (
-                  <div className="grid grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-100 animate-fade-in-down">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-100 animate-fade-in-down">
                      
                      <div>
                         <label className="block text-[9px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Cấp bậc</label>
@@ -256,6 +299,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                            <option value="Hạ sĩ">Hạ sĩ</option>
                            <option value="Trung sĩ">Trung sĩ</option>
                            <option value="Thượng sĩ">Thượng sĩ</option>
+                           <option value="Thiếu úy">Thiếu úy</option>
+                           <option value="Trung úy">Trung úy</option>
                         </select>
                      </div>
 
@@ -263,9 +308,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                         <label className="block text-[9px] font-bold text-gray-400 mb-1 uppercase tracking-wider">An ninh & Pháp luật</label>
                         <select className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#14452F] text-gray-700" value={filterSecurity} onChange={e => setFilterSecurity(e.target.value)}>
                            <option value="all">Tất cả hồ sơ</option>
-                           <option value="vi_pham" className="text-red-600">⚠️ Có lịch sử vi phạm</option>
-                           <option value="vay_no" className="text-amber-600">⚠️ Đang vay nợ</option>
-                           <option value="yeu_to_nuoc_ngoai" className="text-blue-600">✈️ Có yếu tố nước ngoài</option>
+                           <option value="vi_pham">🚫 Có lịch sử vi phạm</option>
+                           <option value="vay_no">💸 Đang vay nợ</option>
+                           <option value="nuoc_ngoai">✈️ Yếu tố nước ngoài</option>
                         </select>
                      </div>
 
@@ -273,15 +318,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                         <label className="block text-[9px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Trình độ & Chính trị</label>
                         <div className="grid grid-cols-2 gap-2">
                            <select className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#14452F] text-gray-700" value={filterEducation} onChange={e => setFilterEducation(e.target.value)}>
-                              <option value="all">Học vấn (Tất cả)</option>
-                              <option value="dai_hoc">ĐH/CĐ/TC</option>
-                              <option value="pho_thong">PTTH (12/12)</option>
-                              <option value="chua_tot_nghiep">Chưa tốt nghiệp</option>
+                              <option value="all">Học vấn</option>
+                              <option value="12/12">12/12</option>
+                              <option value="9/12">9/12</option>
+                              <option value="Đại học">Đại học</option>
+                              <option value="Cao đẳng">Cao đẳng</option>
                            </select>
                            <select className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#14452F] text-gray-700" value={filterPolitical} onChange={e => setFilterPolitical(e.target.value)}>
-                              <option value="all">Chính trị (Tất cả)</option>
+                              <option value="all">Chính trị</option>
                               <option value="dang_vien">Đảng viên</option>
-                              <option value="doan_vien">Đoàn viên</option>
+                              <option value="quan_chung">Quần chúng</option>
                            </select>
                         </div>
                      </div>
@@ -300,7 +346,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
               </div>
 
               {/* Personnel Table */}
-              <div className="bg-white rounded-[2rem] shadow-xl overflow-hidden border border-gray-100 min-h-[500px]">
+              <div className="bg-white rounded-[2rem] shadow-xl overflow-hidden border border-gray-100 min-h-[500px] relative z-10">
                 <table className="w-full">
                   <thead className="bg-[#14452F] text-white">
                     <tr>
@@ -326,14 +372,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                           <td className="px-6 py-4 text-[11px] font-bold text-gray-400">#{idx + 1}</td>
                           <td className="px-6 py-4">
                               <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-xl overflow-hidden border border-gray-200 bg-gray-100 flex-shrink-0">
+                                <div className="w-10 h-10 rounded-xl overflow-hidden border border-gray-200 bg-gray-100 flex-shrink-0 relative">
                                   <img src={p.anh_dai_dien || 'https://via.placeholder.com/150'} className="w-full h-full object-cover" alt="" />
+                                  {p.vao_dang_ngay && <div className="absolute bottom-0 right-0 w-3 h-3 bg-red-600 rounded-tl-md border-t border-l border-white" title="Đảng viên"></div>}
                                 </div>
                                 <div>
-                                  <p className="font-bold text-[#14452F] text-xs uppercase">{p.ho_ten}</p>
+                                  <p className="font-bold text-[#14452F] text-xs uppercase group-hover:text-green-700 transition-colors">{p.ho_ten}</p>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="text-[10px] text-gray-500 font-mono bg-gray-100 px-1 rounded">{p.cccd}</span>
-                                    {p.vao_dang_ngay && <span className="w-1.5 h-1.5 bg-red-500 rounded-full" title="Đảng viên"></span>}
+                                    <span className="text-[10px] text-gray-500 font-mono bg-gray-100 px-1.5 rounded border border-gray-200">{p.cccd}</span>
+                                    {p.vao_dang_ngay && <span className="text-[9px] text-red-600 font-bold border border-red-100 bg-red-50 px-1 rounded">Đảng viên</span>}
                                   </div>
                                 </div>
                               </div>
@@ -346,16 +393,27 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
                              <p className="text-[10px] font-bold uppercase text-[#14452F]">{p.don_vi}</p>
                           </td>
                           <td className="px-6 py-4 text-center">
-                              <div className="flex justify-center gap-1">
-                                {p.tai_chinh_suc_khoe?.vay_no?.co_khong && <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" title="Vay nợ"></div>}
-                                {(p.lich_su_vi_pham?.ma_tuy?.co_khong || p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong) && <div className="w-2 h-2 bg-purple-600 rounded-full" title="Vi phạm"></div>}
-                                {(p.yeu_to_nuoc_ngoai?.than_nhan?.length > 0 || p.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length > 0) && <div className="w-2 h-2 bg-blue-500 rounded-full" title="Yếu tố nước ngoài"></div>}
+                              <div className="flex justify-center items-center gap-2">
+                                {p.tai_chinh_suc_khoe?.vay_no?.co_khong && 
+                                  <span className="w-6 h-6 flex items-center justify-center bg-red-100 text-red-600 rounded-full border border-red-200" title="Đang vay nợ">💸</span>
+                                }
+                                {(p.lich_su_vi_pham?.ma_tuy?.co_khong || p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong) && 
+                                  <span className="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-600 rounded-full border border-gray-200" title="Có lịch sử vi phạm">🚫</span>
+                                }
+                                {(p.yeu_to_nuoc_ngoai?.than_nhan?.length > 0 || p.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length > 0) && 
+                                  <span className="w-6 h-6 flex items-center justify-center bg-blue-100 text-blue-600 rounded-full border border-blue-200" title="Yếu tố nước ngoài">✈️</span>
+                                }
                               </div>
                           </td>
                           <td className="px-6 py-4 text-right">
-                              <button onClick={() => { setEditingPerson(p); setShowForm(true); }} className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg font-bold text-[10px] uppercase hover:bg-[#14452F] hover:text-white hover:border-[#14452F] transition-all shadow-sm">
-                                Chi tiết
-                              </button>
+                              <div className="flex justify-end gap-2">
+                                <button onClick={() => { setEditingPerson(p); setShowForm(true); }} className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg font-bold text-[10px] uppercase hover:bg-[#14452F] hover:text-white hover:border-[#14452F] transition-all shadow-sm">
+                                  Chi tiết
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.ho_ten); }} className="px-2 py-1.5 bg-red-50 border border-red-100 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all shadow-sm">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                </button>
+                              </div>
                           </td>
                         </tr>
                       ))
@@ -365,17 +423,50 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
               </div>
 
               {/* Stats Footer */}
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                  <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
                     <div>
-                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Quân số</p>
-                      <p className="text-xl font-black text-[#14452F]">{personnel.length}</p>
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Quân số hiển thị</p>
+                      <p className="text-2xl font-black text-[#14452F]">{personnel.length}</p>
                     </div>
-                    <div className="p-2 bg-green-50 text-green-600 rounded-xl">
-                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3.005 3.005 0 013.75-2.906z"/></svg>
+                    <div className="p-3 bg-green-50 text-green-600 rounded-xl">
+                       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3.005 3.005 0 013.75-2.906z"/></svg>
                     </div>
                  </div>
-                 {/* Các box thống kê khác giữ nguyên logic nhưng có thể hiển thị dynamic theo bộ lọc */}
+
+                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Đảng viên</p>
+                      <p className="text-2xl font-black text-red-600">{personnel.filter(p => p.vao_dang_ngay).length}</p>
+                    </div>
+                    <div className="p-3 bg-red-50 text-red-600 rounded-xl">
+                       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd"/></svg>
+                    </div>
+                 </div>
+
+                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Cần lưu ý</p>
+                      <p className="text-2xl font-black text-amber-600">
+                        {personnel.filter(p => p.tai_chinh_suc_khoe?.vay_no?.co_khong || p.lich_su_vi_pham?.ma_tuy?.co_khong).length}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
+                    </div>
+                 </div>
+                 
+                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Trình độ ĐH/CĐ</p>
+                      <p className="text-2xl font-black text-blue-600">
+                        {personnel.filter(p => /đại học|cao đẳng|thạc sĩ|tiến sĩ/i.test(p.trinh_do_van_hoa)).length}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0z"/></svg>
+                    </div>
+                 </div>
               </div>
             </div>
           )}

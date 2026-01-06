@@ -1,21 +1,52 @@
+
 {
-  "name": "copy-of-hệ-thống-quản-lý-nhân-sự-quân-đội---qnmanager",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "name": "qn-manager",
+  "version": "1.0.0",
+  "description": "Hệ thống Quản lý Nhân sự Quân đội nội bộ",
+  "main": "main.js",
+  "author": "DHsystem",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "start": "electron .",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "dist": "electron-builder"
   },
   "dependencies": {
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "better-sqlite3": "^11.0.0",
+    "electron-is-dev": "^2.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "electron-rebuild": "^3.2.9"
+  },
+  "build": {
+    "appId": "com.dhsystem.qnmanager",
+    "productName": "QNManager",
+    "copyright": "Copyright © 2026 DHsystem",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "index.tsx",
+      "store.ts",
+      "types.ts",
+      "components/**/*",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Quản lý Quân nhân QNManager"
+    },
+    "asar": true
   }
 }

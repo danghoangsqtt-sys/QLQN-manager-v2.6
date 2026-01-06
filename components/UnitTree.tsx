@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Unit, MilitaryPersonnel } from '../types';
 import { db } from '../store';
 
@@ -12,6 +12,9 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh }) => {
   const [newUnitName, setNewUnitName] = useState('');
   const [selectedParent, setSelectedParent] = useState<string | null>(null);
   const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
+  // Added state to hold async personnel counts
+  const [activeUnitPersonnelCount, setActiveUnitPersonnelCount] = useState(0);
+  const [activeUnitTotalCount, setActiveUnitTotalCount] = useState(0);
 
   const handleAdd = () => {
     if (!newUnitName) {
@@ -24,21 +27,39 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh }) => {
     onRefresh();
   };
 
-  const getAllPersonnelInUnit = (unitId: string): MilitaryPersonnel[] => {
+  // Fixed: Made async to properly handle Promise from db.getPersonnel
+  const getAllPersonnelInUnit = async (unitId: string): Promise<MilitaryPersonnel[]> => {
     // Lấy quân nhân của đơn vị hiện tại
-    let list = db.getPersonnel({ unitId });
+    let list = await db.getPersonnel({ unitId });
     
     // Lấy quân nhân của các đơn vị con (đệ quy)
     const children = units.filter(u => u.parentId === unitId);
-    children.forEach(child => {
-      list = [...list, ...getAllPersonnelInUnit(child.id)];
-    });
+    for (const child of children) {
+      const childList = await getAllPersonnelInUnit(child.id);
+      list = [...list, ...childList];
+    }
     
     return list;
   };
 
-  const exportToCSV = (unitId: string, unitName: string) => {
-    const personnelList = getAllPersonnelInUnit(unitId);
+  // Added: Update counts when active unit or unit structure changes
+  useEffect(() => {
+    const updateCounts = async () => {
+      if (activeUnitId) {
+        const direct = await db.getPersonnel({ unitId: activeUnitId });
+        setActiveUnitPersonnelCount(direct.length);
+        const total = await getAllPersonnelInUnit(activeUnitId);
+        setActiveUnitTotalCount(total.length);
+      }
+    };
+    updateCounts();
+  }, [activeUnitId, units]);
+
+  // Fixed: Made async
+  const exportToCSV = async (unitId: string, unitName: string) => {
+    const personnelList = unitId === 'all' 
+      ? await db.getPersonnel() 
+      : await getAllPersonnelInUnit(unitId);
     
     if (personnelList.length === 0) {
       alert(`Đơn vị ${unitName} hiện chưa có quân nhân nào trong biên chế.`);
@@ -285,11 +306,11 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh }) => {
             <div className="grid grid-cols-2 gap-4">
                <div className="p-5 bg-white/5 rounded-2xl border border-white/10">
                   <p className="text-[9px] font-black text-green-400 uppercase">Quân số trực tiếp</p>
-                  <p className="text-2xl font-black">{db.getPersonnel({ unitId: activeUnitId }).length}</p>
+                  <p className="text-2xl font-black">{activeUnitPersonnelCount}</p>
                </div>
                <div className="p-5 bg-white/5 rounded-2xl border border-white/10">
                   <p className="text-[9px] font-black text-green-400 uppercase">Tổng quân số biên chế</p>
-                  <p className="text-2xl font-black">{getAllPersonnelInUnit(activeUnitId).length}</p>
+                  <p className="text-2xl font-black">{activeUnitTotalCount}</p>
                </div>
             </div>
 

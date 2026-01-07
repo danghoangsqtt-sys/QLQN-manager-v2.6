@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MilitaryPersonnel, Unit, CustomField } from '../types';
 import { db } from '../store';
 
@@ -10,13 +10,14 @@ interface PersonnelFormProps {
 
 // FIX: Định nghĩa dữ liệu mặc định ra ngoài để tái sử dụng
 // Giúp reset form sạch sẽ khi chuyển từ chế độ "Sửa" sang "Thêm mới"
+// QUAN TRỌNG: Tất cả giá trị ở đây phải là giá trị khởi tạo (false, '', 0), KHÔNG được để kiểu dữ liệu (boolean, string)
 const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
   ho_ten: '', ten_khac: '', ngay_sinh: '', cccd: '', sdt_rieng: '',
   cap_bac: 'Binh nhì', chuc_vu: '', don_vi_id: '',
   nhap_ngu_ngay: '', ngay_vao_doan: '', vao_dang_ngay: '',
   ho_khau_thu_tru: '', noi_sinh: '', dan_toc: 'Kinh', ton_giao: 'Không',
   trinh_do_van_hoa: '12/12', da_tot_nghiep: false, nang_khieu_so_truong: '',
-  anh_dai_dien: '',
+  anh_dai_dien: '', // Trường chứa Base64 ảnh
   // --- NEW UPDATE: Thêm thông tin nghỉ phép ---
   nghi_phep_thuc_te: 0,
   nghi_phep_tham_chieu: 12,
@@ -40,6 +41,7 @@ const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
       than_nhan: [], 
       di_nuoc_ngoai: [], 
       ho_chieu: { da_co: false, du_dinh_nuoc: '' }, 
+      // Đã sửa lỗi: dang_lam_thu_tuc khởi tạo là false (không phải kiểu boolean)
       xuat_canh_dinh_cu: { dang_lam_thu_tuc: false, nuoc: '', nguoi_bao_lanh: '' } 
   },
   lich_su_vi_pham: { 
@@ -48,6 +50,7 @@ const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
     ma_tuy: { co_khong: false, thoi_gian: '', loai: '', so_lan: '', doi_tuong: '', xu_ly: '', hinh_thuc_xu_ly: '' }
   },
   tai_chinh_suc_khoe: { 
+    // Đã rà soát: gia_dinh_biet khởi tạo là false
     vay_no: { co_khong: false, ai_vay: '', nguoi_dung_ten: '', so_tien: '', muc_dich: '', hinh_thuc: '', han_tra: '', gia_dinh_biet: false, nguoi_tra: '' },
     kinh_doanh: { co_khong: false, chi_tiet: '' },
     covid_ban_than: { da_mac: false, thoi_gian: '' }
@@ -61,20 +64,19 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   const [activeTab, setActiveTab] = useState(1);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   
-  // Khởi tạo state. 
-  // Lưu ý: useState chỉ chạy 1 lần khi mount. Việc update khi props thay đổi sẽ do useEffect xử lý.
+  // Ref để điều khiển input file ẩn
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Khởi tạo state
   const [formData, setFormData] = useState<Partial<MilitaryPersonnel>>(
     initialData ? JSON.parse(JSON.stringify(initialData)) : JSON.parse(JSON.stringify(DEFAULT_DATA))
   );
 
   // FIX CRITICAL BUG: Đồng bộ State khi Props initialData thay đổi
-  // Nếu không có đoạn này, khi mở user A rồi mở user B, form vẫn hiện user A.
   useEffect(() => {
     if (initialData) {
-      // Deep clone để ngắt tham chiếu, tránh lỗi sửa trực tiếp vào props
       setFormData(JSON.parse(JSON.stringify(initialData)));
     } else {
-      // Reset về mặc định nếu là chế độ thêm mới
       setFormData(JSON.parse(JSON.stringify(DEFAULT_DATA)));
     }
   }, [initialData]);
@@ -85,6 +87,26 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
       setCustomFields(db.getCustomFields(formData.don_vi_id));
     }
   }, [formData.don_vi_id]);
+
+  // --- HÀM XỬ LÝ UPLOAD ẢNH (MỚI) ---
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Kiểm tra kích thước file (ví dụ: giới hạn 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert("File ảnh quá lớn (Tối đa 5MB)");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        // Lưu chuỗi Base64 vào state
+        setFormData(prev => ({ ...prev, anh_dai_dien: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  // -----------------------------------
 
   const handleSave = () => {
     // Validation cơ bản
@@ -119,39 +141,31 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   };
 
   // Helper function: Update nested object properties safely
-  // FIX: Sử dụng Deep Clone để đảm bảo React State Update đúng chuẩn
   const updateNested = (path: string, value: any) => {
     setFormData(prev => {
-      // Deep clone object hiện tại để tránh mutation trực tiếp
       const updated = JSON.parse(JSON.stringify(prev));
-      
       const keys = path.split('.');
       let current: any = updated;
-      
       for (let i = 0; i < keys.length - 1; i++) {
         const key = keys[i];
         if (!current[key]) current[key] = {};
         current = current[key];
       }
-      
       current[keys[keys.length - 1]] = value;
       return updated;
     });
   };
 
   // Helper functions for Arrays
-  // FIX: Logic kiểm tra mảng an toàn hơn
   const addRow = (path: string, template: any) => {
     setFormData(prev => {
         const updated = JSON.parse(JSON.stringify(prev));
         const keys = path.split('.');
         let current: any = updated;
-        
         for (const k of keys) {
-            if (!current[k]) current[k] = []; // Tạo mảng nếu chưa có trong bản clone
+            if (!current[k]) current[k] = [];
             current = current[k];
         }
-        
         if (Array.isArray(current)) {
             current.push(template);
         }
@@ -164,25 +178,13 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
         const updated = JSON.parse(JSON.stringify(prev));
         const keys = path.split('.');
         let current: any = updated;
-        
-        // Traverse to the array
         for (let i = 0; i < keys.length; i++) {
-             if (!current[keys[i]]) return prev; // Path invalid, return original state
+             if (!current[keys[i]]) return prev;
              current = current[keys[i]];
         }
-        
         if (Array.isArray(current)) {
-             // Mutation on clone is safe
              current.splice(index, 1);
         }
-        
-        // Cập nhật lại state cha
-        // Logic traverse ở trên chỉ lấy reference tới mảng con trong 'updated'
-        // Vì 'updated' là deep clone, việc sửa 'current' sẽ sửa 'updated'
-        
-        // Tuy nhiên để chắc chắn traverse đúng, ta cần gán lại. 
-        // Cách trên splice trực tiếp vào 'current' (là tham chiếu con của 'updated') là OK.
-        
         return updated;
     });
   };
@@ -228,13 +230,45 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
               </h3>
               <div className="grid grid-cols-12 gap-6">
                 <div className="col-span-12 md:col-span-2 flex flex-col items-center">
+                  
+                  {/* --- KHU VỰC HIỂN THỊ ẢNH --- */}
                   <div className="w-32 h-44 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-50 mb-3 relative overflow-hidden group">
-                    {formData.anh_dai_dien ? <img src={formData.anh_dai_dien} className="w-full h-full object-cover" /> : <span className="text-gray-400 text-[10px] font-bold">Ảnh thẻ</span>}
+                    {formData.anh_dai_dien ? (
+                        <img src={formData.anh_dai_dien} className="w-full h-full object-cover" alt="Avatar" />
+                    ) : (
+                        <span className="text-gray-400 text-[10px] font-bold">Ảnh thẻ</span>
+                    )}
                   </div>
-                  <button className="px-4 py-1.5 border border-gray-300 rounded-md text-[10px] font-bold text-gray-600 flex items-center gap-1 hover:bg-gray-50">
+                  
+                  {/* INPUT FILE ẨN */}
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    accept="image/*" 
+                    onChange={handleImageUpload} 
+                  />
+
+                  {/* NÚT KÍCH HOẠT CHỌN ẢNH */}
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-1.5 border border-gray-300 rounded-md text-[10px] font-bold text-gray-600 flex items-center gap-1 hover:bg-gray-50 transition-colors"
+                  >
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" strokeWidth="2"/><path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2"/></svg>
                     Chọn ảnh
                   </button>
+
+                  {/* NÚT XÓA ẢNH */}
+                  {formData.anh_dai_dien && (
+                      <button 
+                        onClick={() => setFormData(prev => ({...prev, anh_dai_dien: ''}))}
+                        className="mt-2 text-[10px] text-red-500 hover:underline"
+                      >
+                        Xóa ảnh
+                      </button>
+                  )}
+                  {/* ----------------------------- */}
+
                 </div>
                 <div className="col-span-12 md:col-span-10 grid grid-cols-3 gap-x-6 gap-y-4">
                   <div className="col-span-2">

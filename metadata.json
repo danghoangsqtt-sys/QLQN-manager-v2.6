@@ -1,5 +1,6 @@
+
 {
-  "name": "Copy of QNManager - Hệ thống Quản lý Quân nhân v5",
-  "description": "Ứng dụng quản lý hồ sơ nhân sự quân đội nội bộ bảo mật, hoạt động offline 100%.",
+  "name": "QNManager Pro",
+  "description": "Hệ thống quản lý quân nhân nội bộ. Hoạt động ngoại tuyến 100%, bảo mật tuyệt đối, không cần cài đặt môi trường.",
   "requestFramePermissions": []
 }

@@ -1,17 +1,12 @@
+
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Meta CSP cơ bản để an toàn hơn, nhưng vẫn cho phép inline style/script cần thiết -->
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
     <title>Hệ thống Quản lý Quân nhân - QNManager</title>
     
-    <!-- Tailwind CSS (Trong môi trường production nên build ra file CSS riêng, 
-         nhưng để đơn giản ở đây ta vẫn có thể giữ CDN hoặc import trong JS) -->
-    <!-- Tốt nhất là import trong index.tsx: import './index.css' -->
     <script src="https://cdn.tailwindcss.com"></script> 
-    <script type="module" src="/index.tsx"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -20,7 +15,7 @@
             --accent-color: #d4af37;
             --bg-color: #f4f6f8;
         }
-        body { font-family: 'Roboto', sans-serif; background-color: var(--bg-color); }
+        body { font-family: 'Roboto', sans-serif; background-color: var(--bg-color); margin: 0; padding: 0; }
         .military-green { background-color: var(--primary-color); }
         .military-text { color: var(--primary-color); }
         .gold-btn { background-color: var(--accent-color); color: white; transition: all 0.3s ease; }
@@ -29,9 +24,41 @@
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .nav-link-active { background: linear-gradient(90deg, rgba(255, 255, 255, 0.1) 0%, transparent 100%); border-left: 4px solid var(--accent-color); color: white !important; }
         .section-title { border-bottom: 2px solid #eee; padding-bottom: 8px; margin-bottom: 16px; font-weight: 700; color: var(--primary-color); text-transform: uppercase; font-size: 0.9rem; }
+        
+        /* Custom Scrollbar for better UX */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 5px;
+            border: 2px solid #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-color);
+        }
+
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fade-in { animation: fade-in 0.4s ease-out; }
     </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.0.0",
+    "react-dom": "https://esm.sh/react-dom@^19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@^19.0.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@^0.454.0?external=react",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
 </head>
-<body class="overflow-hidden">
+<body class="min-h-screen">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
 </body>

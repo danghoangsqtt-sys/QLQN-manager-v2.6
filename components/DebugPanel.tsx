@@ -5,17 +5,24 @@ import { LogEntry } from '../types';
 
 const DebugPanel: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [stats, setStats] = useState(db.getSystemStats());
+  const [stats, setStats] = useState({ 
+    personnelCount: 0, 
+    unitCount: 0, 
+    dbSize: '...', 
+    status: '...', 
+    storageUsage: '...' 
+  });
   const [isDiagnosticRunning, setIsDiagnosticRunning] = useState(false);
 
-  const refreshLogs = () => {
+  const refreshData = async () => {
     setLogs(db.getLogs());
-    setStats(db.getSystemStats());
+    const realStats = await db.getSystemStats();
+    setStats(realStats);
   };
 
   useEffect(() => {
-    refreshLogs();
-    const interval = setInterval(refreshLogs, 3000);
+    refreshData();
+    const interval = setInterval(refreshData, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -23,7 +30,7 @@ const DebugPanel: React.FC = () => {
     setIsDiagnosticRunning(true);
     setTimeout(() => {
       db.runDiagnostics();
-      refreshLogs();
+      refreshData();
       setIsDiagnosticRunning(false);
       alert('Chẩn đoán hệ thống hoàn tất. Toàn bộ cấu trúc dữ liệu đã được xác thực.');
     }, 1500);
@@ -31,13 +38,13 @@ const DebugPanel: React.FC = () => {
 
   const clearLogs = () => {
     if (confirm('Xóa sạch lịch sử nhật ký sự kiện?')) {
-        alert('Nhật ký sẽ được làm mới sau khi có sự kiện tiếp theo.');
+        localStorage.removeItem('logs');
+        refreshData();
     }
   };
 
   return (
     <div className="grid grid-cols-12 gap-6 animate-fade-in font-mono">
-      {/* Cột trái: Stats */}
       <div className="col-span-12 lg:col-span-4 space-y-6">
         <div className="bg-[#1a1a1a] text-green-400 p-6 rounded-2xl border border-green-900 shadow-2xl">
           <h3 className="text-xs font-black uppercase mb-6 flex items-center gap-2 border-b border-green-900 pb-2">
@@ -46,19 +53,19 @@ const DebugPanel: React.FC = () => {
           </h3>
           <div className="space-y-4 text-[11px]">
             <div className="flex justify-between border-b border-green-900/30 pb-2">
-              <span className="opacity-60">Cấu trúc dữ liệu:</span>
+              <span className="opacity-60">Trạng thái SQL:</span>
               <span className="font-bold text-white uppercase">{stats.status}</span>
             </div>
             <div className="flex justify-between border-b border-green-900/30 pb-2">
-              <span className="opacity-60">Số lượng bản ghi:</span>
-              <span className="font-bold text-white">{stats.personnelCount} hồ sơ</span>
+              <span className="opacity-60">Hồ sơ lưu trữ:</span>
+              <span className="font-bold text-white">{stats.personnelCount}</span>
             </div>
             <div className="flex justify-between border-b border-green-900/30 pb-2">
-              <span className="opacity-60">Dung lượng bộ nhớ:</span>
+              <span className="opacity-60">Dung lượng DB:</span>
               <span className="font-bold text-white">{stats.dbSize}</span>
             </div>
             <div className="flex justify-between border-b border-green-900/30 pb-2">
-              <span className="opacity-60">Tải trọng hệ thống:</span>
+              <span className="opacity-60">Sử dụng tài nguyên:</span>
               <span className="font-bold text-white">{stats.storageUsage}</span>
             </div>
           </div>
@@ -92,13 +99,12 @@ const DebugPanel: React.FC = () => {
            <ul className="text-[10px] text-blue-300/70 space-y-2 list-disc pl-4 leading-relaxed font-bold">
              <li>Hệ thống vận hành trên nhân lõi DH-Core v2.6.</li>
              <li>Mã hóa dữ liệu đầu cuối chuẩn quân sự 256-bit.</li>
-             <li>Thiết kế and lập trình bởi DHsystem (2026).</li>
-             <li>Sử dụng Alt + D để truy cập trung tâm giám sát.</li>
+             <li>Thiết kế lập trình bởi DHsystem (2026).</li>
+             <li>Lưu trữ Flat-file JSON cực nhanh và bảo mật.</li>
            </ul>
         </div>
       </div>
 
-      {/* Cột phải: Log Console */}
       <div className="col-span-12 lg:col-span-8 flex flex-col h-[650px]">
         <div className="bg-[#0c0c0c] flex-1 rounded-2xl border border-gray-800 shadow-2xl flex flex-col overflow-hidden">
           <div className="bg-[#1a1a1a] px-6 py-4 border-b border-gray-800 flex justify-between items-center">

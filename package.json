@@ -1,61 +1,36 @@
+
 {
-  "name": "qn-manager",
-  "version": "2.6.0",
-  "description": "Hệ thống Quản lý Nhân sự Quân đội nội bộ",
+  "name": "qn-manager-pro",
+  "version": "3.0.0",
+  "description": "Hệ thống Quản lý Quân nhân - Phiên bản Văn phòng",
   "main": "main.js",
   "author": "DHsystem",
+  "type": "commonjs",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
     "start": "electron .",
-    "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "dist": "npm run build && electron-builder"
+    "dist": "electron-builder --win --portable"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^11.0.0",
     "electron-is-dev": "^2.0.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "lucide-react": "^0.454.0"
   },
   "devDependencies": {
-    "@types/react": "^18.2.64",
-    "@types/react-dom": "^18.2.21",
-    "@vitejs/plugin-react": "^4.2.1",
-    "autoprefixer": "^10.4.18",
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3",
-    "postcss": "^8.4.35",
-    "tailwindcss": "^3.4.1",
-    "typescript": "^5.2.2",
-    "vite": "^5.1.6",
-    "@electron/rebuild": "^3.6.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
   },
   "build": {
     "appId": "com.dhsystem.qnmanager",
-    "productName": "QNManager",
-    "copyright": "Copyright © 2026 DHsystem",
-    "files": [
-      "dist/**/*",
-      "main.js",
-      "preload.js",
-      "package.json"
-    ],
+    "productName": "QuanLyQuanNhan",
+    "win": {
+      "target": "portable",
+      "icon": "public/icon.ico"
+    },
     "directories": {
       "output": "release"
     },
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "public/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Quản lý Quân nhân QNManager"
-    },
-    "asar": true,
-    "npmRebuild": false
+    "asar": true
   }
 }

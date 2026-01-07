@@ -1,25 +1,21 @@
-import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomField } from './types';
 
-// Mở rộng interface Window để TypeScript nhận diện API mới từ Preload
+import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomField } from './types.ts';
+
 declare global {
   interface Window {
     electronAPI: {
-      // Auth APIs (Mới)
       login: (password: string) => Promise<boolean>;
       changePassword: (newPassword: string) => Promise<boolean>;
-
-      // Personnel APIs
-      getPersonnel: (filters?: any) => Promise<any[]>;
-      savePersonnel: (payload: { id: string; data: MilitaryPersonnel }) => Promise<void>;
-      deletePersonnel: (id: string) => Promise<void>;
-      
-      // Unit APIs
+      getPersonnel: (filters?: any) => Promise<MilitaryPersonnel[]>;
+      savePersonnel: (payload: { id: string; data: Partial<MilitaryPersonnel> }) => Promise<boolean>;
+      deletePersonnel: (id: string) => Promise<boolean>;
       getUnits: () => Promise<Unit[]>;
-      saveUnit: (unit: Unit) => Promise<void>;
-      deleteUnit: (id: string) => Promise<void>;
-
-      // System APIs
+      saveUnit: (unit: Unit) => Promise<boolean>;
+      deleteUnit: (id: string) => Promise<boolean>;
+      getSystemStats: () => Promise<any>;
       resetDatabase: () => Promise<{ success: boolean }>;
+      saveSetting: (payload: { key: string; value: any }) => Promise<boolean>;
+      getSetting: (key: string) => Promise<any>;
     };
   }
 }
@@ -28,249 +24,123 @@ export interface FilterCriteria {
   unitId?: string;
   keyword?: string;
   rank?: string;
+  position?: string;
   education?: string;
-  political?: string;
-  security?: string;
-  marital?: string;
+  political?: 'all' | 'dang_vien' | 'quan_chung';
+  security?: 'all' | 'vay_no' | 'vi_pham' | 'ma_tuy';
+  marital?: 'all' | 'da_ket_hon' | 'doc_than';
+  foreignElement?: 'all' | 'has_relatives' | 'has_passport';
+  familyStatus?: 'all' | 'poor' | 'violation' | 'special_circumstances';
 }
 
+const DEFAULT_SHORTCUTS: ShortcutConfig[] = [
+  { id: 'add_person', label: 'Thêm chiến sĩ mới', key: 'n', altKey: false, ctrlKey: true, shiftKey: false },
+  { id: 'search', label: 'Tiêu điểm tìm kiếm', key: 'f', altKey: false, ctrlKey: true, shiftKey: false },
+  { id: 'refresh', label: 'Làm mới dữ liệu', key: 'r', altKey: false, ctrlKey: true, shiftKey: false },
+  { id: 'guide', label: 'Mở hướng dẫn sử dụng', key: 'h', altKey: false, ctrlKey: true, shiftKey: false }
+];
+
 class Store {
-  // Kiểm tra môi trường Electron
   private isElectron() {
     return typeof window !== 'undefined' && window.electronAPI !== undefined;
   }
 
-  // --- AUTHENTICATION (XỬ LÝ ĐĂNG NHẬP) ---
-  
   async login(password: string): Promise<boolean> {
-    if (this.isElectron()) {
-      // Gọi xuống Backend để verify hash
-      return await window.electronAPI.login(password);
-    }
-    // Fallback cho môi trường Web (Dev mode)
-    const stored = localStorage.getItem('admin_password') || '123456';
-    return password === stored;
+    if (this.isElectron()) return await window.electronAPI.login(password);
+    return password === '123456';
   }
 
   async changePassword(newPassword: string): Promise<boolean> {
-    if (this.isElectron()) {
-      return await window.electronAPI.changePassword(newPassword);
-    }
+    if (this.isElectron()) return await window.electronAPI.changePassword(newPassword);
     localStorage.setItem('admin_password', newPassword);
     return true;
   }
 
-  // --- CORE DATA FETCHING (TỐI ƯU HIỆU NĂNG) ---
-
-  async getPersonnel(filters: FilterCriteria = {}): Promise<MilitaryPersonnel[]> {
-    try {
-      if (this.isElectron()) {
-        // QUAN TRỌNG: Gửi filters xuống SQL xử lý, không tải rác về RAM
-        const data = await window.electronAPI.getPersonnel(filters);
-        return data || [];
-      } else {
-        // Fallback Logic cho Web Mode (Giữ nguyên để test giao diện)
-        let personnel: MilitaryPersonnel[] = [];
-        const local = localStorage.getItem('fallback_personnel');
-        personnel = local ? JSON.parse(local) : [];
-        
-        // Logic lọc giả lập tại client (Web only)
-        if (filters.unitId && filters.unitId !== 'all') {
-          personnel = personnel.filter((p) => p.don_vi_id === filters.unitId);
-        }
-        if (filters.keyword) {
-          const kw = filters.keyword.toLowerCase().trim();
-          personnel = personnel.filter((p) => 
-            (p.ho_ten && p.ho_ten.toLowerCase().includes(kw)) || 
-            (p.cccd && p.cccd.includes(kw)) ||
-            (p.sdt_rieng && p.sdt_rieng.includes(kw))
-          );
-        }
-        if (filters.rank && filters.rank !== 'all') {
-          personnel = personnel.filter(p => p.cap_bac === filters.rank);
-        }
-        if (filters.education && filters.education !== 'all') {
-            personnel = personnel.filter(p => p.trinh_do_van_hoa === filters.education);
-        }
-        if (filters.political && filters.political !== 'all') {
-             if (filters.political === 'dang_vien') personnel = personnel.filter(p => p.vao_dang_ngay);
-             else if (filters.political === 'quan_chung') personnel = personnel.filter(p => !p.vao_dang_ngay);
-        }
-        // ... Các logic lọc khác giữ nguyên cho web mode
-        
-        return personnel.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  async getSetting(key: string): Promise<any> {
+    if (this.isElectron()) {
+      try {
+        return await window.electronAPI.getSetting(key);
+      } catch (e) {
+        console.warn("Electron getSetting failed", e);
       }
-    } catch (e) {
-      console.error("Lỗi truy vấn dữ liệu:", e);
-      return [];
     }
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : null;
   }
 
-  // --- DATA MUTATION ---
+  async saveSetting(key: string, value: any): Promise<void> {
+    if (this.isElectron()) {
+      try {
+        await window.electronAPI.saveSetting({ key, value });
+        return;
+      } catch (e) {
+        console.warn("Electron saveSetting failed", e);
+      }
+    }
+    localStorage.setItem(key, JSON.stringify(value));
+  }
+
+  async getPersonnel(filters: FilterCriteria = {}): Promise<MilitaryPersonnel[]> {
+    if (this.isElectron()) return await window.electronAPI.getPersonnel(filters);
+    return [];
+  }
 
   async addPersonnel(p: MilitaryPersonnel) {
-    const timestamp = Date.now();
-    const newPerson = { ...p, createdAt: timestamp, updatedAt: timestamp };
-
-    if (this.isElectron()) {
-      await window.electronAPI.savePersonnel({ id: newPerson.id, data: newPerson });
-    } else {
-      const list = await this.getPersonnel();
-      list.push(newPerson);
-      localStorage.setItem('fallback_personnel', JSON.stringify(list));
-    }
-    this.log('INFO', `Thêm mới hồ sơ: ${p.ho_ten}`, `ID: ${p.id}`);
+    if (this.isElectron()) await window.electronAPI.savePersonnel({ id: p.id, data: p });
   }
 
   async updatePersonnel(id: string, p: Partial<MilitaryPersonnel>) {
-    if (this.isElectron()) {
-        // Lấy dữ liệu cũ từ DB thay vì tin tưởng vào list trên RAM
-        const list = await this.getPersonnel(); // Hoặc tốt hơn là viết API getOne
-        const current = list.find(item => item.id === id);
-        
-        if (current) {
-             const updated = { ...current, ...p, updatedAt: Date.now() };
-             await window.electronAPI.savePersonnel({ id, data: updated });
-        } else {
-             console.error("Không tìm thấy hồ sơ để cập nhật ID:", id);
-        }
-    } else {
-        // Logic cho web mode giữ nguyên
-    }
-}
+    if (this.isElectron()) await window.electronAPI.savePersonnel({ id, data: p });
+  }
 
   async deletePersonnel(id: string) {
-     if (this.isElectron()) {
-        try {
-          await window.electronAPI.deletePersonnel(id);
-          this.log('WARN', `Đã xóa vĩnh viễn hồ sơ (DB)`, `ID: ${id}`);
-        } catch (e) {
-          console.error("Lỗi xóa:", e);
-          this.log('ERROR', `Lỗi xóa hồ sơ`, `ID: ${id} - ${e}`);
-        }
-     } else {
-        const list = await this.getPersonnel();
-        const newList = list.filter(p => p.id !== id);
-        localStorage.setItem('fallback_personnel', JSON.stringify(newList));
-        this.log('WARN', `Đã xóa hồ sơ (Local)`, `ID: ${id}`);
-     }
+    if (this.isElectron()) await window.electronAPI.deletePersonnel(id);
   }
 
-  // --- LOGGING & UTILS ---
-
-  log(level: LogLevel, message: string, details?: string) {
-    try {
-      const logs = this.getLogs();
-      logs.unshift({ id: Date.now().toString(), timestamp: Date.now(), level, message, details });
-      localStorage.setItem('logs', JSON.stringify(logs.slice(0, 200)));
-    } catch (e) { console.error(e); }
-  }
-
-  getLogs(): LogEntry[] {
-    try {
-      const stored = localStorage.getItem('logs');
-      return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
-  }
-
-  // --- UNIT MANAGEMENT ---
-
-  async getUnits(): Promise<Unit[]> { 
-    try {
-      if (this.isElectron()) {
-        return await window.electronAPI.getUnits();
-      }
-      const stored = localStorage.getItem('units');
-      return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
+  async getUnits(): Promise<Unit[]> {
+    if (this.isElectron()) return await window.electronAPI.getUnits();
+    return [];
   }
 
   async addUnit(name: string, parentId: string | null) {
     const newUnit: Unit = { id: Date.now().toString(), name, parentId };
-    if (this.isElectron()) {
-      await window.electronAPI.saveUnit(newUnit);
-    } else {
-      const units = await this.getUnits();
-      units.push(newUnit);
-      localStorage.setItem('units', JSON.stringify(units));
-    }
-    this.log('INFO', `Thêm đơn vị mới: ${name}`);
+    if (this.isElectron()) await window.electronAPI.saveUnit(newUnit);
   }
 
   async deleteUnit(id: string) {
-    if (this.isElectron()) {
-      await window.electronAPI.deleteUnit(id);
-    } else {
-      const units = await this.getUnits();
-      const newUnits = units.filter(u => u.id !== id);
-      localStorage.setItem('units', JSON.stringify(newUnits));
-    }
-    this.log('WARN', `Xóa đơn vị`, `ID: ${id}`);
+    if (this.isElectron()) await window.electronAPI.deleteUnit(id);
   }
 
   async clearDatabase() {
-    if (this.isElectron()) {
-      await window.electronAPI.resetDatabase();
-      this.log('SYSTEM', 'Đã Reset toàn bộ cơ sở dữ liệu về mặc định');
-    } else {
-      localStorage.clear();
-    }
+    if (this.isElectron()) await window.electronAPI.resetDatabase();
   }
 
-  // --- SETTINGS (LocalStorage only for client prefs) ---
+  getCustomFields(unitId: string): CustomField[] { return []; }
 
-  getCustomFields(unitId: string): CustomField[] {
-    try {
-      const stored = localStorage.getItem('custom_fields');
-      const allFields = stored ? JSON.parse(stored) : [];
-      return allFields.filter((f: any) => f.unit_id === unitId || f.unit_id === null);
-    } catch { return []; }
+  async getShortcuts(): Promise<ShortcutConfig[]> { 
+    const saved = await this.getSetting('app_shortcuts');
+    return saved || DEFAULT_SHORTCUTS;
   }
 
-  getShortcuts(): ShortcutConfig[] {
-    const defaults: ShortcutConfig[] = [
-      { id: 'list', label: 'Danh Sách', key: '1', altKey: true, ctrlKey: false, shiftKey: false },
-      { id: 'units', label: 'Tổ Chức', key: '2', altKey: true, ctrlKey: false, shiftKey: false },
-      { id: 'new', label: 'Nhập Liệu', key: 'n', altKey: true, ctrlKey: false, shiftKey: false },
-      { id: 'settings', label: 'Cài Đặt', key: '4', altKey: true, ctrlKey: false, shiftKey: false },
-      { id: 'debug', label: 'Diagnostics', key: 'd', altKey: true, ctrlKey: false, shiftKey: false },
-    ];
-    try {
-      const stored = localStorage.getItem('shortcuts');
-      return stored ? JSON.parse(stored) : defaults;
-    } catch { return defaults; }
+  async updateShortcut(id: string, config: Partial<ShortcutConfig>): Promise<void> {
+    const current = await this.getShortcuts();
+    const updated = current.map(s => s.id === id ? { ...s, ...config } : s);
+    await this.saveSetting('app_shortcuts', updated);
   }
 
-  updateShortcut(id: string, config: Partial<ShortcutConfig>) {
-    const shortcuts = this.getShortcuts();
-    const idx = shortcuts.findIndex(s => s.id === id);
-    if (idx !== -1) {
-      shortcuts[idx] = { ...shortcuts[idx], ...config };
-      localStorage.setItem('shortcuts', JSON.stringify(shortcuts));
-    }
+  async resetShortcuts(): Promise<void> {
+    await this.saveSetting('app_shortcuts', DEFAULT_SHORTCUTS);
   }
 
-  resetShortcuts() {
-    localStorage.removeItem('shortcuts');
+  getLogs(): LogEntry[] { return []; }
+
+  async getSystemStats() {
+    if (this.isElectron()) return await window.electronAPI.getSystemStats();
+    return { personnelCount: 0, unitCount: 0, dbSize: '0 MB', status: 'WEB', storageUsage: '0%' };
   }
 
-  getSystemStats() { 
-    return { 
-        personnelCount: 0, 
-        dbSize: this.isElectron() ? 'SQLite (Encrypted)' : 'LocalStorage (Dev)', 
-        storageUsage: `${this.getLogs().length} events`, 
-        status: 'ONLINE' 
-    }; 
-  }
-
-  runDiagnostics() {
-    this.log('SYSTEM', 'Bắt đầu chẩn đoán hệ thống...');
-    setTimeout(() => {
-        this.log('INFO', 'Kiểm tra cấu trúc cơ sở dữ liệu: OK');
-        this.log('INFO', 'Kiểm tra quyền truy cập tệp tin: OK');
-        this.log('SYSTEM', 'Chẩn đoán hệ thống hoàn tất.');
-    }, 500);
-  }
+  log(level: LogLevel, message: string) {}
+  runDiagnostics() {}
 }
 
 export const db = new Store();

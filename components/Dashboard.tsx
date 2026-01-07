@@ -1,485 +1,560 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { MilitaryPersonnel, Unit } from '../types';
-import { db } from '../store';
-import PersonnelForm from './PersonnelForm';
-import UnitTree from './UnitTree';
-import Settings from './Settings';
-import DebugPanel from './DebugPanel';
 
-interface DashboardProps {
-  onLogout: () => void;
-}
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { MilitaryPersonnel, Unit, ShortcutConfig } from '../types.ts';
+import { db, FilterCriteria } from '../store.ts';
+import PersonnelForm from './PersonnelForm.tsx';
+import UnitTree from './UnitTree.tsx';
+import Settings from './Settings.tsx';
+import { 
+  Search, FileDown, LogOut, 
+  Users, Edit3, Trash2, Eye,
+  ShieldCheck, Landmark, UserPlus,
+  Filter, X, FileText, Printer, Globe, Heart, AlertTriangle, BookOpen, Info, CheckCircle2, ShieldAlert, Award, Briefcase, GraduationCap, Scale, Lock
+} from 'lucide-react';
 
-const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
-  // --- Data States ---
+const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
+  const [activeTab, setActiveTab] = useState<'personnel' | 'units' | 'settings'>('personnel');
   const [personnel, setPersonnel] = useState<MilitaryPersonnel[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<MilitaryPersonnel | undefined>(undefined);
+  const [viewingPerson, setViewingPerson] = useState<MilitaryPersonnel | undefined>(undefined);
+  const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   
-  // --- Filter States ---
-  const [search, setSearch] = useState('');
-  const [filterUnit, setFilterUnit] = useState('all');
-  
-  // --- Advanced Filter States ---
-  const [isAdvancedFilter, setIsAdvancedFilter] = useState(false);
-  const [filterRank, setFilterRank] = useState('all');
-  const [filterSecurity, setFilterSecurity] = useState('all');
-  const [filterEducation, setFilterEducation] = useState('all');
-  const [filterMarital, setFilterMarital] = useState('all');
-  const [filterPolitical, setFilterPolitical] = useState('all');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // --- View & Modal States ---
-  const [showForm, setShowForm] = useState(false);
-  const [editingPerson, setEditingPerson] = useState<MilitaryPersonnel | undefined>();
-  const [activeView, setActiveView] = useState<'list' | 'units' | 'input' | 'settings' | 'debug'>('list');
+  const [filters, setFilters] = useState<FilterCriteria>({
+    keyword: '', unitId: 'all', rank: 'all', position: 'all',
+    political: 'all', security: 'all', 
+    education: 'all', foreignElement: 'all',
+    familyStatus: 'all', marital: 'all'
+  });
 
-  // --- Core Data Fetching (Async) ---
-  const refreshData = useCallback(async () => {
-    setLoading(true);
-    try {
-      // 1. Lấy Units (Bất đồng bộ từ DB) - SỬA LỖI: Thêm await
-      const unitList = await db.getUnits();
-      setUnits(unitList);
+  const loadData = useCallback(async () => {
+    const pList = await db.getPersonnel(filters);
+    const uList = await db.getUnits();
+    setPersonnel(pList);
+    setUnits(uList);
+  }, [filters]);
 
-      // 2. Lấy Personnel (Bất đồng bộ từ SQLite/Electron)
-      const data = await db.getPersonnel({ 
-        unitId: filterUnit, 
-        keyword: search,
-        rank: filterRank,
-        security: filterSecurity,
-        education: filterEducation,
-        marital: filterMarital,
-        political: filterPolitical
-      });
+  // --- LOGIC PHÍM TẮT ---
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      const shortcuts = await db.getShortcuts();
       
-      setPersonnel(data);
-    } catch (error) {
-      console.error("Lỗi tải dữ liệu:", error);
-    } finally {
-      // Thêm chút delay giả lập để UI mượt mà hơn nếu chạy local quá nhanh
-      setTimeout(() => setLoading(false), 300);
-    }
-  }, [filterUnit, search, filterRank, filterSecurity, filterEducation, filterMarital, filterPolitical]);
+      const findShortcut = (id: string) => shortcuts.find(s => s.id === id);
 
-  // Effect: Gọi refreshData khi filter thay đổi
-  useEffect(() => {
-    refreshData();
-  }, [refreshData, activeView]);
-
-  // Effect: Phím tắt
-  useEffect(() => {
-    const handleShortcuts = (e: KeyboardEvent) => {
-      if (e.altKey && e.key === '1') setActiveView('list');
-      if (e.altKey && e.key === '2') setActiveView('units');
-      if (e.altKey && e.key === '3') { setEditingPerson(undefined); setShowForm(true); }
-      if (e.altKey && e.key === '4') setActiveView('settings');
-      if (e.altKey && (e.key === 'd' || e.key === 'D')) setActiveView('debug');
-      if (e.altKey && (e.key === 'n' || e.key === 'N')) { setEditingPerson(undefined); setShowForm(true); }
-      if (e.altKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); document.getElementById('mainSearchInput')?.focus(); }
-      if (e.altKey && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); refreshData(); }
-      if (e.key === 'Escape') onLogout();
-    };
-    window.addEventListener('keydown', handleShortcuts);
-    return () => window.removeEventListener('keydown', handleShortcuts);
-  }, [onLogout, refreshData]);
-
-  // --- Handlers ---
-  
-  const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Xác nhận xóa hồ sơ đồng chí: ${name}? Hành động này không thể hoàn tác.`)) {
-      await db.deletePersonnel(id);
-      refreshData();
-    }
-  };
-
-  const handleExportCSV = () => {
-    if (personnel.length === 0) {
-      alert('Không có dữ liệu để xuất!');
-      return;
-    }
-
-    const unitName = filterUnit === 'all' ? 'TOÀN ĐƠN VỊ' : units.find(u => u.id === filterUnit)?.name || 'ĐƠN VỊ';
-    const currentTime = new Date();
-    const timeString = `${currentTime.getHours()}ờ${currentTime.getMinutes()}, ngày ${currentTime.getDate()} tháng ${currentTime.getMonth() + 1} năm ${currentTime.getFullYear()}`;
-
-    let csvContent = "\ufeff"; // BOM
-    csvContent += "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\n";
-    csvContent += "Độc lập - Tự do - Hạnh phúc\n";
-    csvContent += ",,,,,,,,,,,\n"; 
-    csvContent += `DANH SÁCH TRÍCH NGANG QUÂN NHÂN - ${unitName.toUpperCase()}\n`;
-    csvContent += `(Thời điểm trích xuất: ${timeString})\n\n`;
-
-    const headers = [
-      "STT",
-      "Họ và tên",
-      "Cấp bậc",
-      "Chức vụ",
-      "Đơn vị",
-      "Số CCCD",
-      "Số điện thoại",
-      "Ngày sinh",
-      "Quê quán / Nơi ở",
-      "Ngày nhập ngũ",
-      "Ngày vào Đảng",
-      "Trình độ học vấn",
-      "Ghi chú (Nguyện vọng)"
-    ];
-    csvContent += headers.join(",") + "\n";
-
-    personnel.forEach((p, idx) => {
-      const clean = (text: string) => {
-        if (!text) return "";
-        return text.replace(/"/g, '""').replace(/(\r\n|\n|\r)/gm, " ");
+      const isMatch = (s?: ShortcutConfig) => {
+        if (!s) return false;
+        return e.key.toLowerCase() === s.key.toLowerCase() && 
+               e.ctrlKey === s.ctrlKey && 
+               e.altKey === s.altKey && 
+               e.shiftKey === s.shiftKey;
       };
 
-      const row = [
-        idx + 1,
-        `"${clean(p.ho_ten.toUpperCase())}"`,
-        `"${clean(p.cap_bac)}"`,
-        `"${clean(p.chuc_vu)}"`,
-        `"${clean(p.don_vi)}"`,
-        `"'${clean(p.cccd)}"`, 
-        `"'${clean(p.sdt_rieng)}"`,
-        `"${clean(p.ngay_sinh)}"`,
-        `"${clean(p.ho_khau_thu_tru || p.noi_sinh)}"`,
-        `"${clean(p.nhap_ngu_ngay)}"`,
-        `"${clean(p.vao_dang_ngay || 'Chưa vào Đảng')}"`,
-        `"${clean(p.trinh_do_van_hoa)}"`,
-        `"${clean(p.y_kien_nguyen_vong)}"`
-      ];
-      csvContent += row.join(",") + "\n";
-    });
+      if (isMatch(findShortcut('add_person'))) {
+        e.preventDefault();
+        setEditingPerson(undefined);
+        setIsFormOpen(true);
+      } else if (isMatch(findShortcut('search'))) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (isMatch(findShortcut('refresh'))) {
+        e.preventDefault();
+        loadData();
+      } else if (isMatch(findShortcut('guide'))) {
+        e.preventDefault();
+        setShowGuide(true);
+      }
+    };
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `DANH_SACH_${unitName.replace(/\s+/g, '_')}_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [loadData]);
+
+  useEffect(() => {
+    const loadSavedFilters = async () => {
+      const saved = await db.getSetting('last_filters');
+      if (saved) setFilters(saved);
+    };
+    loadSavedFilters();
+  }, []);
+
+  useEffect(() => {
+    db.saveSetting('last_filters', filters);
+  }, [filters]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const resetFilters = () => {
+    setFilters({ 
+      keyword: '', unitId: 'all', rank: 'all', position: 'all',
+      political: 'all', security: 'all', 
+      education: 'all', foreignElement: 'all',
+      familyStatus: 'all', marital: 'all'
+    });
   };
 
-  return (
-    <div className="flex h-screen bg-[#f4f6f8] font-sans overflow-hidden">
-      {/* Sidebar - Cố định */}
-      <div className="w-64 military-green text-white flex flex-col shadow-2xl z-20 shrink-0">
-        <div className="p-8 bg-black/10 flex items-center gap-3">
-          <div className="bg-white/10 p-2 rounded-xl">
-             {/* Thay thế icon SVG cũ bằng icon tệp hồ sơ hiện đại */}
-             <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 3.5V9h5.5" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 17h6" />
-             </svg>
-          </div>
-          <div>
-            <h1 className="text-sm font-black tracking-widest uppercase">QLQN SYSTEM</h1>
-            <p className="text-[8px] text-green-400 font-bold uppercase tracking-widest">HÀNH CHÍNH QUÂN SỰ</p>
-          </div>
-        </div>
+  const exportToDoc = (p: MilitaryPersonnel) => {
+    const html = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>Hồ sơ quân nhân</title>
+      <style>
+        body { font-family: 'Times New Roman', serif; }
+        .header { text-align: center; font-weight: bold; text-transform: uppercase; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        td { border: 1px solid black; padding: 8px; font-size: 14px; }
+        .title { font-size: 18px; font-weight: bold; margin: 20px 0; }
+      </style>
+      </head>
+      <body>
+        <div class="header">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM<br>Độc lập - Tự do - Hạnh phúc</div>
+        <div class="header" style="margin-top: 30px;">HỒ SƠ QUÂN NHÂN</div>
+        <div class="header" style="font-size: 20px;">${p.ho_ten.toUpperCase()}</div>
+        <table>
+          <tr><td width="30%"><b>Cấp bậc:</b></td><td>${p.cap_bac}</td></tr>
+          <tr><td><b>Chức vụ:</b></td><td>${p.chuc_vu}</td></tr>
+          <tr><td><b>Đơn vị:</b></td><td>${p.don_vi}</td></tr>
+          <tr><td><b>Số CCCD:</b></td><td>${p.cccd}</td></tr>
+          <tr><td><b>Ngày sinh:</b></td><td>${p.ngay_sinh}</td></tr>
+        </table>
+      </body></html>
+    `;
+    const blob = new Blob([html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `HOSO_${p.ho_ten.replace(/\s+/g, '_')}.doc`;
+    a.click();
+  };
 
-        <nav className="flex-1 p-3 space-y-1 mt-6 overflow-y-auto scrollbar-hide">
-          <button onClick={() => setActiveView('list')} className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all text-xs font-bold ${activeView === 'list' ? 'nav-link-active' : 'text-white/40 hover:bg-white/5'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" strokeWidth="2"/></svg>
-            Danh Sách (Alt+1)
+  const ranks = [
+    "Binh nhì", "Binh nhất", "Hạ sĩ", "Trung sĩ", "Thượng sĩ", 
+    "Thiếu úy", "Trung úy", "Thượng úy", "Đại úy", 
+    "Thiếu tá", "Trung tá", "Thượng tá", "Đại tá"
+  ];
+
+  const positions = [
+    "Chiến sĩ", "Tiểu đội trưởng", "Phó tiểu đội trưởng", 
+    "Trung đội trưởng", "Phó trung đội trưởng",
+    "Đại đội trưởng", "Chính trị viên", "Phó đại đội trưởng", "Phó chính trị viên",
+    "Nhân viên chuyên môn", "Quản lý"
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] flex font-sans text-slate-800">
+      {/* Sidebar Nâng cấp */}
+      <div className="w-80 bg-[#14452F] flex flex-col shadow-2xl shrink-0">
+        <div className="p-10 text-center">
+          <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-white/20">
+            <ShieldCheck className="text-white w-10 h-10" />
+          </div>
+          <h1 className="text-white font-black text-xl tracking-tight uppercase">Quản Lý Quân Nhân</h1>
+          <p className="text-green-400 text-[10px] font-bold uppercase mt-2 tracking-[0.2em]">Phiên bản 5.0 Pro</p>
+        </div>
+        
+        <nav className="flex-1 px-6 space-y-2">
+          <button onClick={() => setActiveTab('personnel')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-bold text-sm transition-all ${activeTab === 'personnel' ? 'bg-white text-[#14452F] shadow-xl' : 'text-white/50 hover:bg-white/5'}`}>
+            <Users size={20} /> Danh sách hồ sơ
           </button>
-          <button onClick={() => setActiveView('units')} className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all text-xs font-bold ${activeView === 'units' ? 'nav-link-active' : 'text-white/40 hover:bg-white/5'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16" strokeWidth="2"/></svg>
-            Tổ Chức (Alt+2)
+          <button onClick={() => setActiveTab('units')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-bold text-sm transition-all ${activeTab === 'units' ? 'bg-white text-[#14452F] shadow-xl' : 'text-white/50 hover:bg-white/5'}`}>
+            <Landmark size={20} /> Cơ cấu đơn vị
           </button>
-          <button onClick={() => { setEditingPerson(undefined); setShowForm(true); }} className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all text-xs font-bold text-white/40 hover:bg-white/5`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" strokeWidth="2"/></svg>
-            Nhập Liệu (Alt+N)
+          <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-bold text-sm transition-all ${activeTab === 'settings' ? 'bg-white text-[#14452F] shadow-xl' : 'text-white/50 hover:bg-white/5'}`}>
+            <ShieldCheck size={20} /> Hệ thống bảo mật
           </button>
-          <button onClick={() => setActiveView('settings')} className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all text-xs font-bold ${activeView === 'settings' ? 'nav-link-active' : 'text-white/40 hover:bg-white/5'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="2"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2"/></svg>
-            Cài Đặt (Alt+4)
-          </button>
-          <button onClick={() => setActiveView('debug')} className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all text-xs font-bold ${activeView === 'debug' ? 'nav-link-active' : 'text-white/40 hover:bg-white/5'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" strokeWidth="2"/></svg>
-            Diagnostics (Alt+D)
-          </button>
+          
+          <div className="pt-10 border-t border-white/5">
+             <button onClick={() => setShowGuide(true)} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-bold text-sm text-yellow-400 hover:bg-white/5 transition-all">
+                <BookOpen size={20} /> Hướng dẫn sử dụng
+             </button>
+          </div>
         </nav>
+
+        <div className="p-8 border-t border-white/5">
+          <button onClick={onLogout} className="w-full py-4 bg-red-500/10 text-red-400 rounded-2xl font-black text-xs uppercase hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2">
+            <LogOut size={16} /> Thoát hệ thống
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-        {/* Header */}
-        <header className="bg-white px-10 py-6 border-b flex justify-between items-center z-10 shadow-sm shrink-0">
-          <div>
-            <h2 className="text-2xl font-black text-[#14452F] uppercase tracking-tighter">
-              {activeView === 'list' ? 'DANH SÁCH QUÂN NHÂN' : 
-               activeView === 'units' ? 'CƠ CẤU TỔ CHỨC' : 
-               activeView === 'settings' ? 'CÀI ĐẶT HỆ THỐNG' : 
-               activeView === 'debug' ? 'DIAGNOSTICS & DEBUG' : 'NHẬP LIỆU MỚI'}
-            </h2>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1 flex items-center gap-2">
-              Hệ thống quản lý nội bộ bảo mật 
-              {loading && <span className="text-blue-500 animate-pulse flex items-center gap-1">• Đang đồng bộ dữ liệu...</span>}
-            </p>
-          </div>
-          <div className="flex items-center gap-10">
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                 <p className="text-sm font-black text-gray-800 uppercase">Ban Chỉ Huy</p>
-                 <p className="text-[10px] text-green-500 font-bold uppercase tracking-tighter">System Operational</p>
-              </div>
-              <div className="w-12 h-12 rounded-2xl military-green flex items-center justify-center text-white border-4 border-white shadow-xl">
-                 <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/></svg>
-              </div>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-white border-b px-10 py-6">
+          <div className="flex items-center justify-between gap-8">
+            <div className="relative flex-1 max-w-2xl">
+              <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              <input 
+                ref={searchInputRef}
+                type="text" 
+                placeholder="Tìm Tên, CCCD, SĐT hoặc Quê quán..."
+                className="w-full pl-14 pr-6 py-4 bg-slate-100 border-none rounded-2xl outline-none focus:ring-4 ring-green-600/10 font-bold text-sm"
+                value={filters.keyword}
+                onChange={(e) => setFilters({...filters, keyword: e.target.value})}
+              />
             </div>
-            <button onClick={onLogout} className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-rose-50 text-rose-400 hover:text-rose-600 transition-all border border-transparent hover:border-rose-100" title="Đăng xuất">
-               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeWidth="2"/></svg>
-            </button>
+            <div className="flex gap-4">
+              <button onClick={() => setShowAdvancedFilter(!showAdvancedFilter)} className={`flex items-center gap-2 px-6 py-4 rounded-2xl font-bold text-sm transition-all ${showAdvancedFilter ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                <Filter size={18} /> Lọc chuyên sâu
+              </button>
+              <button onClick={() => { setEditingPerson(undefined); setIsFormOpen(true); }} className="flex items-center gap-2 px-8 py-4 bg-[#14452F] text-white rounded-2xl font-black uppercase text-xs hover:bg-green-800 shadow-xl">
+                <UserPlus size={18} /> Thêm chiến sĩ (Ctrl+N)
+              </button>
+            </div>
           </div>
+          
+          {showAdvancedFilter && (
+            <div className="mt-6 p-8 bg-slate-50 rounded-[2rem] border border-slate-200 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 animate-fade-in shadow-inner overflow-visible">
+               {/* ĐƠN VỊ */}
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                   <Landmark size={12} /> Đơn vị
+                 </label>
+                 <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-green-500/20" value={filters.unitId} onChange={(e) => setFilters({...filters, unitId: e.target.value})}>
+                    <option value="all">Tất cả đơn vị</option>
+                    {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                 </select>
+               </div>
+
+               {/* QUÂN HÀM */}
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                   <Award size={12} /> Quân hàm
+                 </label>
+                 <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-green-500/20" value={filters.rank} onChange={(e) => setFilters({...filters, rank: e.target.value})}>
+                    <option value="all">Tất cả quân hàm</option>
+                    {ranks.map(r => <option key={r} value={r}>{r}</option>)}
+                 </select>
+               </div>
+
+               {/* CHỨC VỤ */}
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                   <Briefcase size={12} /> Chức vụ
+                 </label>
+                 <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-green-500/20" value={filters.position} onChange={(e) => setFilters({...filters, position: e.target.value})}>
+                    <option value="all">Tất cả chức vụ</option>
+                    {positions.map(p => <option key={p} value={p}>{p}</option>)}
+                 </select>
+               </div>
+
+               {/* HỌC VẤN */}
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                   <GraduationCap size={12} /> Học vấn
+                 </label>
+                 <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-green-500/20" value={filters.education} onChange={(e) => setFilters({...filters, education: e.target.value})}>
+                    <option value="all">Tất cả trình độ</option>
+                    <option value="12/12">Trung học phổ thông (12/12)</option>
+                    <option value="Trung cấp">Trung cấp</option>
+                    <option value="Cao đẳng">Cao đẳng</option>
+                    <option value="Đại học">Đại học</option>
+                    <option value="Sau đại học">Sau đại học</option>
+                 </select>
+               </div>
+
+               {/* CHÍNH TRỊ */}
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                   <Scale size={12} /> Diện chính trị
+                 </label>
+                 <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-green-500/20" value={filters.political} onChange={(e) => setFilters({...filters, political: e.target.value as any})}>
+                    <option value="all">Tất cả</option>
+                    <option value="dang_vien">Đảng viên</option>
+                    <option value="quan_chung">Quần chúng</option>
+                 </select>
+               </div>
+
+               {/* KỶ LUẬT / VAY NỢ */}
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                   <AlertTriangle size={12} className="text-red-500" /> Kỷ luật & Vay nợ
+                 </label>
+                 <select className="w-full bg-white border border-red-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-red-500/20 text-red-700" value={filters.security} onChange={(e) => setFilters({...filters, security: e.target.value as any})}>
+                    <option value="all" className="text-slate-800">Bình thường</option>
+                    <option value="vay_no">Có nợ nần</option>
+                    <option value="vi_pham">Có tiền án/tiền sự</option>
+                    <option value="ma_tuy">Liên quan ma túy</option>
+                 </select>
+               </div>
+
+               {/* YẾU TỐ NƯỚC NGOÀI */}
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                   <Globe size={12} /> Yếu tố nước ngoài
+                 </label>
+                 <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-green-500/20" value={filters.foreignElement} onChange={(e) => setFilters({...filters, foreignElement: e.target.value as any})}>
+                    <option value="all">Tất cả</option>
+                    <option value="has_relatives">Có thân nhân nước ngoài</option>
+                    <option value="has_passport">Đã có hộ chiếu</option>
+                 </select>
+               </div>
+
+               {/* HÔN NHÂN */}
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                   <Heart size={12} /> Hôn nhân
+                 </label>
+                 <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-green-500/20" value={filters.marital} onChange={(e) => setFilters({...filters, marital: e.target.value as any})}>
+                    <option value="all">Tất cả</option>
+                    <option value="da_ket_hon">Đã kết hôn</option>
+                    <option value="doc_than">Độc thân (chưa vợ)</option>
+                 </select>
+               </div>
+
+               {/* HOÀN CẢNH GIA ĐÌNH */}
+               <div className="space-y-2">
+                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                   <Info size={12} /> Hoàn cảnh gia đình
+                 </label>
+                 <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 ring-green-500/20" value={filters.familyStatus} onChange={(e) => setFilters({...filters, familyStatus: e.target.value as any})}>
+                    <option value="all">Tất cả</option>
+                    <option value="poor">Hộ nghèo/Khó khăn</option>
+                    <option value="violation">Thân nhân vi phạm PL</option>
+                    <option value="special_circumstances">Hoàn cảnh đặc biệt</option>
+                 </select>
+               </div>
+
+               <div className="flex items-end pb-1">
+                 <button onClick={resetFilters} className="w-full py-3 bg-red-50 text-red-500 font-bold text-xs uppercase rounded-xl hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2 border border-red-100 shadow-sm">
+                   <X size={14} /> Xóa tất cả lọc
+                 </button>
+               </div>
+            </div>
+          )}
         </header>
 
-        <main className="flex-1 overflow-y-auto p-10 scrollbar-hide bg-[#f8fafc] relative">
-          
-          {/* Loading Overlay */}
-          {loading && (
-             <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 z-50">
-                <div className="h-full bg-[#d4af37] animate-progress"></div>
-             </div>
-          )}
-
-          {activeView === 'list' && (
-            <div className="space-y-8 animate-fade-in pb-20">
+        <main className="flex-1 overflow-y-auto p-10">
+          {activeTab === 'personnel' && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center mb-4">
+                 <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Users size={14} /> Kết quả tìm kiếm: <span className="text-green-700 font-black">{personnel.length} hồ sơ</span>
+                 </h2>
+                 <div className="flex gap-2">
+                    {filters.rank !== 'all' && <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-[10px] font-bold">Quân hàm: {filters.rank}</span>}
+                    {filters.security !== 'all' && <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-[10px] font-bold uppercase">Cảnh báo: {filters.security}</span>}
+                 </div>
+              </div>
               
-              {/* Filter Bar Nâng Cấp */}
-              <div className="bg-white p-6 rounded-3xl shadow-lg border border-gray-100 animate-fade-in relative z-20">
-                {/* Hàng 1: Bộ lọc cơ bản */}
-                <div className="flex flex-wrap gap-4 items-end">
-                   
-                   <div className="w-64">
-                      <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase tracking-widest">Đơn vị quản lý</label>
-                      <select className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl font-bold text-xs text-[#14452F] outline-none hover:bg-gray-100 transition-colors cursor-pointer" value={filterUnit} onChange={e => setFilterUnit(e.target.value)}>
-                         <option value="all">TOÀN ĐƠN VỊ</option>
-                         {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
-                   </div>
-
-                   <div className="flex-1 min-w-[300px] relative">
-                      <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase tracking-widest">Tìm kiếm (Tên, CCCD, SĐT, Sở trường)</label>
-                      <input id="mainSearchInput" type="text" placeholder="Nhập từ khóa tìm kiếm..." className="w-full p-3 pl-10 bg-gray-50 border border-gray-100 rounded-xl font-bold text-xs text-[#14452F] focus:ring-2 ring-[#14452F]/10 transition-all outline-none" value={search} onChange={e => setSearch(e.target.value)} />
-                      <div className="absolute left-3 bottom-3 text-gray-400">
-                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2"/></svg>
-                      </div>
-                   </div>
-
-                   {/* Toggle Advanced Filter */}
-                   <button onClick={() => setIsAdvancedFilter(!isAdvancedFilter)} className={`p-3 rounded-xl border transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-wider h-[42px] ${isAdvancedFilter ? 'bg-[#14452F] text-white border-[#14452F] shadow-lg' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
-                      <svg className={`w-4 h-4 transition-transform ${isAdvancedFilter ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                      {isAdvancedFilter ? 'Thu gọn' : 'Bộ lọc sâu'}
-                   </button>
-                   
-                   <div className="w-[1px] h-10 bg-gray-200 mx-2 hidden md:block"></div>
-
-                   <button onClick={handleExportCSV} className="bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 p-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm h-[42px]" title="Xuất Excel CSV">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                    Xuất File
-                  </button>
-                  <button onClick={() => { setEditingPerson(undefined); setShowForm(true); }} className="bg-[#d4af37] text-white hover:bg-[#b89628] p-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 h-[42px] font-bold text-[10px] uppercase tracking-wider" title="Thêm mới">
-                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
-                     Thêm Mới
-                  </button>
+              {personnel.length === 0 ? (
+                <div className="py-40 text-center text-slate-300 font-bold uppercase text-sm tracking-widest border-4 border-dashed rounded-[3rem]">
+                   Không tìm thấy hồ sơ phù hợp
                 </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {personnel.map(p => (
+                    <div key={p.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl hover:scale-[1.01] transition-all group flex items-center gap-8 relative overflow-hidden">
+                       {/* Cảnh báo nợ nần / vi phạm */}
+                       {(p.tai_chinh_suc_khoe?.vay_no?.co_khong || p.lich_su_vi_pham?.ma_tuy?.co_khong) && (
+                         <div className="absolute top-0 right-0 w-24 h-24">
+                           <div className="absolute top-2 right-[-24px] rotate-45 bg-red-500 text-white text-[8px] font-black uppercase py-1 w-32 text-center shadow-md">Cảnh báo</div>
+                         </div>
+                       )}
 
-                {/* Hàng 2: Bộ lọc chuyên sâu (Ẩn/Hiện) */}
-                {isAdvancedFilter && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-100 animate-fade-in-down">
-                     
-                     <div>
-                        <label className="block text-[9px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Cấp bậc</label>
-                        <select className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#14452F] text-gray-700" value={filterRank} onChange={e => setFilterRank(e.target.value)}>
-                           <option value="all">Tất cả cấp bậc</option>
-                           <option value="Binh nhì">Binh nhì</option>
-                           <option value="Binh nhất">Binh nhất</option>
-                           <option value="Hạ sĩ">Hạ sĩ</option>
-                           <option value="Trung sĩ">Trung sĩ</option>
-                           <option value="Thượng sĩ">Thượng sĩ</option>
-                           <option value="Thiếu úy">Thiếu úy</option>
-                           <option value="Trung úy">Trung úy</option>
-                        </select>
-                     </div>
-
-                     <div>
-                        <label className="block text-[9px] font-bold text-gray-400 mb-1 uppercase tracking-wider">An ninh & Pháp luật</label>
-                        <select className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#14452F] text-gray-700" value={filterSecurity} onChange={e => setFilterSecurity(e.target.value)}>
-                           <option value="all">Tất cả hồ sơ</option>
-                           <option value="vi_pham">🚫 Có lịch sử vi phạm</option>
-                           <option value="vay_no">💸 Đang vay nợ</option>
-                           <option value="nuoc_ngoai">✈️ Yếu tố nước ngoài</option>
-                        </select>
-                     </div>
-
-                     <div>
-                        <label className="block text-[9px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Trình độ & Chính trị</label>
-                        <div className="grid grid-cols-2 gap-2">
-                           <select className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#14452F] text-gray-700" value={filterEducation} onChange={e => setFilterEducation(e.target.value)}>
-                              <option value="all">Học vấn</option>
-                              <option value="12/12">12/12</option>
-                              <option value="9/12">9/12</option>
-                              <option value="Đại học">Đại học</option>
-                              <option value="Cao đẳng">Cao đẳng</option>
-                           </select>
-                           <select className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#14452F] text-gray-700" value={filterPolitical} onChange={e => setFilterPolitical(e.target.value)}>
-                              <option value="all">Chính trị</option>
-                              <option value="dang_vien">Đảng viên</option>
-                              <option value="quan_chung">Quần chúng</option>
-                           </select>
-                        </div>
-                     </div>
-
-                     <div>
-                        <label className="block text-[9px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Hôn nhân & Gia đình</label>
-                        <select className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#14452F] text-gray-700" value={filterMarital} onChange={e => setFilterMarital(e.target.value)}>
-                           <option value="all">Tất cả</option>
-                           <option value="doc_than">Độc thân</option>
-                           <option value="co_vo">Đã lập gia đình</option>
-                           <option value="co_con">Đã có con</option>
-                        </select>
-                     </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Personnel Table */}
-              <div className="bg-white rounded-[2rem] shadow-xl overflow-hidden border border-gray-100 min-h-[500px] relative z-10">
-                <table className="w-full">
-                  <thead className="bg-[#14452F] text-white">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest opacity-80">STT</th>
-                      <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest opacity-80">Hồ sơ</th>
-                      <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest opacity-80">Cấp bậc / Chức vụ</th>
-                      <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest opacity-80">Đơn vị</th>
-                      <th className="px-6 py-4 text-center text-[10px] font-black uppercase tracking-widest opacity-80">Cảnh báo</th>
-                      <th className="px-6 py-4 text-right text-[10px] font-black uppercase tracking-widest opacity-80">Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 bg-white">
-                    {personnel.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="py-20 text-center text-gray-300">
-                          <svg className="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeWidth="1"/></svg>
-                          <p className="font-black uppercase text-xs tracking-widest">Không có dữ liệu phù hợp bộ lọc</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      personnel.map((p, idx) => (
-                        <tr key={p.id} className="hover:bg-green-50/40 transition-colors group">
-                          <td className="px-6 py-4 text-[11px] font-bold text-gray-400">#{idx + 1}</td>
-                          <td className="px-6 py-4">
-                              <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-xl overflow-hidden border border-gray-200 bg-gray-100 flex-shrink-0 relative">
-                                  <img src={p.anh_dai_dien || 'https://via.placeholder.com/150'} className="w-full h-full object-cover" alt="" />
-                                  {p.vao_dang_ngay && <div className="absolute bottom-0 right-0 w-3 h-3 bg-red-600 rounded-tl-md border-t border-l border-white" title="Đảng viên"></div>}
-                                </div>
-                                <div>
-                                  <p className="font-bold text-[#14452F] text-xs uppercase group-hover:text-green-700 transition-colors">{p.ho_ten}</p>
-                                  <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="text-[10px] text-gray-500 font-mono bg-gray-100 px-1.5 rounded border border-gray-200">{p.cccd}</span>
-                                    {p.vao_dang_ngay && <span className="text-[9px] text-red-600 font-bold border border-red-100 bg-red-50 px-1 rounded">Đảng viên</span>}
-                                  </div>
-                                </div>
-                              </div>
-                          </td>
-                          <td className="px-6 py-4">
-                             <span className="inline-block px-2 py-0.5 bg-[#d4af37]/10 text-[#a6892e] rounded text-[9px] font-black uppercase mb-1">{p.cap_bac}</span>
-                             <p className="text-[11px] font-bold text-gray-600">{p.chuc_vu}</p>
-                          </td>
-                          <td className="px-6 py-4">
-                             <p className="text-[10px] font-bold uppercase text-[#14452F]">{p.don_vi}</p>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                              <div className="flex justify-center items-center gap-2">
-                                {p.tai_chinh_suc_khoe?.vay_no?.co_khong && 
-                                  <span className="w-6 h-6 flex items-center justify-center bg-red-100 text-red-600 rounded-full border border-red-200" title="Đang vay nợ">💸</span>
-                                }
-                                {(p.lich_su_vi_pham?.ma_tuy?.co_khong || p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong) && 
-                                  <span className="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-600 rounded-full border border-gray-200" title="Có lịch sử vi phạm">🚫</span>
-                                }
-                                {(p.yeu_to_nuoc_ngoai?.than_nhan?.length > 0 || p.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length > 0) && 
-                                  <span className="w-6 h-6 flex items-center justify-center bg-blue-100 text-blue-600 rounded-full border border-blue-200" title="Yếu tố nước ngoài">✈️</span>
-                                }
-                              </div>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                              <div className="flex justify-end gap-2">
-                                <button onClick={() => { setEditingPerson(p); setShowForm(true); }} className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg font-bold text-[10px] uppercase hover:bg-[#14452F] hover:text-white hover:border-[#14452F] transition-all shadow-sm">
-                                  Chi tiết
-                                </button>
-                                <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.ho_ten); }} className="px-2 py-1.5 bg-red-50 border border-red-100 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all shadow-sm">
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                </button>
-                              </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Stats Footer */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
-                    <div>
-                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Quân số hiển thị</p>
-                      <p className="text-2xl font-black text-[#14452F]">{personnel.length}</p>
+                       <div className="w-24 h-32 rounded-2xl bg-slate-100 overflow-hidden shadow-inner shrink-0 border-2 border-slate-50">
+                          {p.anh_dai_dien ? <img src={p.anh_dai_dien} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[10px] font-black text-slate-300 uppercase leading-tight text-center p-2">No Photo</div>}
+                       </div>
+                       <div className="flex-1 grid grid-cols-4 gap-6">
+                          <div>
+                             <div className="font-black text-[#14452F] text-lg uppercase mb-1">{p.ho_ten}</div>
+                             <div className="text-[11px] text-slate-400 font-bold flex items-center gap-1">
+                               <Lock size={10} /> {p.cccd}
+                             </div>
+                          </div>
+                          <div>
+                             <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Cấp bậc & Chức vụ</div>
+                             <div className="text-sm font-bold flex items-center gap-1">
+                               <Award size={14} className="text-amber-600" />
+                               {p.cap_bac}
+                             </div>
+                             <div className="text-[11px] font-black text-slate-600 uppercase mt-0.5">{p.chuc_vu || 'N/A'}</div>
+                          </div>
+                          <div>
+                             <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Đơn vị & Liên hệ</div>
+                             <div className="text-sm font-black text-green-800 uppercase flex items-center gap-1">
+                               <Landmark size={14} className="text-green-600" />
+                               {p.don_vi}
+                             </div>
+                             <div className="text-[11px] font-bold text-slate-500 mt-0.5">{p.sdt_rieng || 'Không có SĐT'}</div>
+                          </div>
+                          <div>
+                             <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Tình trạng đặc biệt</div>
+                             <div className="flex flex-wrap gap-1 mt-1">
+                                {p.vao_dang_ngay && <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded text-[8px] font-black uppercase">Đảng viên</span>}
+                                {p.quan_he_gia_dinh?.vo && <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[8px] font-black uppercase">Đã kết hôn</span>}
+                                {p.yeu_to_nuoc_ngoai?.than_nhan?.length > 0 && <span className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded text-[8px] font-black uppercase">Nước ngoài</span>}
+                             </div>
+                          </div>
+                       </div>
+                       <div className="flex gap-2">
+                          <button onClick={() => setViewingPerson(p)} className="p-4 text-blue-600 hover:bg-blue-50 rounded-2xl transition-all" title="Xem chi tiết"><Eye size={22} /></button>
+                          <button onClick={() => { setEditingPerson(p); setIsFormOpen(true); }} className="p-4 text-[#14452F] hover:bg-green-50 rounded-2xl transition-all" title="Chỉnh sửa"><Edit3 size={22} /></button>
+                          <button onClick={async () => { if(confirm("Bạn có chắc chắn muốn xóa hồ sơ quân nhân này? Dữ liệu không thể khôi phục.")) { await db.deletePersonnel(p.id); loadData(); } }} className="p-4 text-red-500 hover:bg-red-50 rounded-2xl transition-all" title="Xóa hồ sơ"><Trash2 size={22} /></button>
+                       </div>
                     </div>
-                    <div className="p-3 bg-green-50 text-green-600 rounded-xl">
-                       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3.005 3.005 0 013.75-2.906z"/></svg>
-                    </div>
-                 </div>
-
-                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
-                    <div>
-                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Đảng viên</p>
-                      <p className="text-2xl font-black text-red-600">{personnel.filter(p => p.vao_dang_ngay).length}</p>
-                    </div>
-                    <div className="p-3 bg-red-50 text-red-600 rounded-xl">
-                       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd"/></svg>
-                    </div>
-                 </div>
-
-                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
-                    <div>
-                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Cần lưu ý</p>
-                      <p className="text-2xl font-black text-amber-600">
-                        {personnel.filter(p => p.tai_chinh_suc_khoe?.vay_no?.co_khong || p.lich_su_vi_pham?.ma_tuy?.co_khong).length}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
-                       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
-                    </div>
-                 </div>
-                 
-                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
-                    <div>
-                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Trình độ ĐH/CĐ</p>
-                      <p className="text-2xl font-black text-blue-600">
-                        {personnel.filter(p => /đại học|cao đẳng|thạc sĩ|tiến sĩ/i.test(p.trinh_do_van_hoa)).length}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0z"/></svg>
-                    </div>
-                 </div>
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
-
-          {activeView === 'units' && <UnitTree units={units} onRefresh={refreshData} />}
-          {activeView === 'settings' && <Settings />}
-          {activeView === 'debug' && <DebugPanel />}
+          {activeTab === 'units' && <UnitTree units={units} onRefresh={loadData} />}
+          {activeTab === 'settings' && <Settings />}
         </main>
       </div>
 
-      {showForm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <PersonnelForm units={units} initialData={editingPerson} onClose={() => { setShowForm(false); refreshData(); }} />
+      {/* --- MODAL HƯỚNG DẪN SỬ DỤNG --- */}
+      {showGuide && (
+        <div className="fixed inset-0 z-[500] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-10 animate-fade-in">
+           <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-[3rem] shadow-2xl flex flex-col overflow-hidden">
+              <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
+                 <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-yellow-400 rounded-2xl flex items-center justify-center text-white">
+                       <BookOpen size={24} />
+                    </div>
+                    <div>
+                       <h2 className="text-xl font-black text-slate-800 uppercase">Hướng dẫn vận hành</h2>
+                       <p className="text-[10px] text-slate-400 font-bold uppercase">Hệ thống quản lý quân nhân chuyên nghiệp</p>
+                    </div>
+                 </div>
+                 <button onClick={() => setShowGuide(false)} className="w-12 h-12 bg-white border rounded-full flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"><X size={24} /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-12 space-y-10">
+                 <section className="space-y-4">
+                    <h3 className="text-sm font-black text-[#14452F] uppercase flex items-center gap-2">
+                       <CheckCircle2 size={18} className="text-green-600" /> 1. Bộ lọc chuyên sâu
+                    </h3>
+                    <p className="text-sm text-slate-600 leading-relaxed pl-7">
+                       - <b>Lọc Kỷ luật & Vay nợ:</b> Giúp rà soát các quân nhân có hoàn cảnh tài chính hoặc chấp hành kỷ luật kém.<br/>
+                       - <b>Lọc Chính trị:</b> Tách riêng Đảng viên để phân công nhiệm vụ phù hợp.<br/>
+                       - <b>Lọc Hôn nhân & Gia đình:</b> Nắm bắt chính xác hoàn cảnh hậu phương của quân nhân.
+                    </p>
+                 </section>
+
+                 <section className="space-y-4">
+                    <h3 className="text-sm font-black text-[#14452F] uppercase flex items-center gap-2">
+                       <ShieldAlert size={18} className="text-red-600" /> 2. Bảo mật dữ liệu gốc
+                    </h3>
+                    <p className="text-sm text-slate-600 leading-relaxed pl-7">
+                       - Hệ thống hoạt động trên công nghệ **SQLite Offline**, toàn bộ hồ sơ nằm tại tệp `du_lieu_quan_nhan_v4.db`.<br/>
+                       - Tuyệt đối không can thiệp vào tệp này nếu không có chuyên môn để bảo toàn tính toàn vẹn của hồ sơ nhân sự.
+                    </p>
+                 </section>
+              </div>
+              <div className="p-8 bg-slate-50 border-t flex justify-center">
+                 <button onClick={() => setShowGuide(false)} className="px-10 py-4 bg-[#14452F] text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">Đã rõ, quay lại làm việc</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {isFormOpen && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-sm overflow-y-auto">
+          <PersonnelForm units={units} initialData={editingPerson} onClose={() => { setIsFormOpen(false); loadData(); }} />
+        </div>
+      )}
+
+      {/* MODAL XEM CHI TIẾT */}
+      {viewingPerson && (
+        <div className="fixed inset-0 z-[400] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-10 animate-fade-in">
+           <div className="bg-white w-full max-w-5xl max-h-[90vh] rounded-[3rem] shadow-2xl flex flex-col overflow-hidden">
+              <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center text-green-700">
+                    <Users size={32} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-slate-800 uppercase">{viewingPerson.ho_ten}</h2>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Hồ sơ chi tiết quân nhân</p>
+                  </div>
+                </div>
+                <button onClick={() => setViewingPerson(undefined)} className="w-12 h-12 bg-white border rounded-full flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"><X size={24} /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-12">
+                 <div className="grid grid-cols-12 gap-12">
+                   <div className="col-span-4 space-y-6">
+                      <div className="aspect-[3/4] rounded-3xl overflow-hidden border-4 border-slate-50 shadow-xl bg-slate-100">
+                         {viewingPerson.anh_dai_dien ? <img src={viewingPerson.anh_dai_dien} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-300 font-black">KHÔNG CÓ ẢNH</div>}
+                      </div>
+                      <div className="p-6 bg-green-50 rounded-3xl border border-green-100">
+                         <h4 className="text-[10px] font-black text-green-800 uppercase mb-4 tracking-widest">Quân hàm & Chức vụ hiện tại</h4>
+                         <p className="text-lg font-black text-green-900 uppercase">{viewingPerson.cap_bac}</p>
+                         <p className="text-sm font-bold text-green-700 mt-1">{viewingPerson.chuc_vu || 'Chưa phân chức vụ'}</p>
+                         <div className="mt-6 pt-4 border-t border-green-100">
+                            <p className="text-[10px] font-black text-green-800 uppercase mb-1">Đơn vị công tác</p>
+                            <p className="text-sm font-black text-green-900 uppercase">{viewingPerson.don_vi}</p>
+                         </div>
+                      </div>
+                   </div>
+                   <div className="col-span-8 space-y-10">
+                      <div className="grid grid-cols-2 gap-8">
+                         <div className="space-y-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số định danh (CCCD)</span>
+                            <p className="text-sm font-bold text-slate-800">{viewingPerson.cccd}</p>
+                         </div>
+                         <div className="space-y-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngày sinh</span>
+                            <p className="text-sm font-bold text-slate-800">{viewingPerson.ngay_sinh}</p>
+                         </div>
+                         <div className="space-y-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số điện thoại</span>
+                            <p className="text-sm font-bold text-slate-800">{viewingPerson.sdt_rieng || 'N/A'}</p>
+                         </div>
+                         <div className="space-y-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trình độ học vấn</span>
+                            <p className="text-sm font-bold text-slate-800">{viewingPerson.trinh_do_van_hoa}</p>
+                         </div>
+                      </div>
+
+                      <div className="p-8 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
+                        <h4 className="text-xs font-black text-slate-800 uppercase flex items-center gap-2">
+                           <Heart size={14} className="text-red-500" /> Tình hình gia đình & Hậu phương
+                        </h4>
+                        <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-xs">
+                           <p><span className="text-slate-400 font-bold uppercase">Mức sống:</span> <span className="font-bold">{viewingPerson.thong_tin_gia_dinh_chung?.muc_song}</span></p>
+                           <p><span className="text-slate-400 font-bold uppercase">Hôn nhân:</span> <span className="font-bold">{viewingPerson.quan_he_gia_dinh?.vo ? 'Đã lập gia đình' : 'Độc thân'}</span></p>
+                           <div className="col-span-2">
+                              <span className="text-slate-400 font-bold uppercase block mb-1">Nghề nghiệp chính gia đình:</span>
+                              <p className="font-bold italic">{viewingPerson.thong_tin_gia_dinh_chung?.nghe_nghiep_chinh || 'Chưa cập nhật'}</p>
+                           </div>
+                        </div>
+                      </div>
+
+                      <div className="p-8 bg-red-50 rounded-3xl border border-red-100 space-y-6">
+                        <h4 className="text-xs font-black text-red-800 uppercase flex items-center gap-2">
+                           <AlertTriangle size={14} /> Chấp hành pháp luật & Kỷ luật
+                        </h4>
+                        <div className="space-y-4">
+                           <div className="flex justify-between items-center text-xs">
+                              <span className="font-bold uppercase text-slate-500">Tình trạng nợ nần:</span>
+                              {viewingPerson.tai_chinh_suc_khoe?.vay_no?.co_khong ? (
+                                <span className="px-3 py-1 bg-red-600 text-white rounded-full font-black text-[10px]">CÓ VAY NỢ ({viewingPerson.tai_chinh_suc_khoe.vay_no.so_tien})</span>
+                              ) : (
+                                <span className="px-3 py-1 bg-green-600 text-white rounded-full font-black text-[10px]">AN TOÀN</span>
+                              )}
+                           </div>
+                           <div className="flex justify-between items-center text-xs">
+                              <span className="font-bold uppercase text-slate-500">Liên quan ma túy:</span>
+                              {viewingPerson.lich_su_vi_pham?.ma_tuy?.co_khong ? (
+                                <span className="px-3 py-1 bg-red-600 text-white rounded-full font-black text-[10px]">CÓ TIỀN SỬ</span>
+                              ) : (
+                                <span className="px-3 py-1 bg-green-600 text-white rounded-full font-black text-[10px]">AN TOÀN</span>
+                              )}
+                           </div>
+                        </div>
+                      </div>
+                   </div>
+                 </div>
+              </div>
+              <div className="p-8 bg-slate-50 border-t flex justify-end gap-4">
+                <button onClick={() => exportToDoc(viewingPerson)} className="flex items-center gap-2 px-8 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">
+                   <FileText size={18} /> Xuất Word (.doc)
+                </button>
+                <button onClick={() => { setEditingPerson(viewingPerson); setViewingPerson(undefined); setIsFormOpen(true); }} className="flex items-center gap-2 px-8 py-4 bg-[#14452F] text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">
+                   <Edit3 size={18} /> Sửa hồ sơ
+                </button>
+              </div>
+           </div>
         </div>
       )}
     </div>

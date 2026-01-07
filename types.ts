@@ -1,3 +1,4 @@
+
 export enum AppMode {
   LOGIN = 'LOGIN',
   COMMANDER = 'COMMANDER',
@@ -93,6 +94,10 @@ export interface MilitaryPersonnel {
   da_tot_nghiep: boolean;
   nang_khieu_so_truong: string;
   
+  // Quản lý nghỉ phép
+  nghi_phep_thuc_te: number;
+  nghi_phep_tham_chieu: number;
+  
   // JSON Columns
   tieu_su_ban_than: BiographyEntry[];
   mang_xa_hoi: { 
@@ -109,7 +114,6 @@ export interface MilitaryPersonnel {
     cha_me_anh_em: FamilyMember[];
     vo: { ho_ten: string; nam_sinh: string; sdt: string; nghe_nghiep: string; noi_o: string } | null;
     con: Array<{ ten: string; ns: string }>;
-    // Cập nhật interface nguoi_yeu để dùng 'sdt' thống nhất
     nguoi_yeu: Array<{ ten: string; ns: string; nghe_o: string; sdt: string }>;
   };
   thong_tin_gia_dinh_chung: {

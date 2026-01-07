@@ -1,283 +1,191 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
-const Database = require('better-sqlite3');
 const fs = require('fs');
-const crypto = require('crypto'); // Thêm module crypto để bảo mật mật khẩu
+const crypto = require('crypto');
+const Database = require('better-sqlite3');
 
-// --- CẤU HÌNH ĐƯỜNG DẪN DỮ LIỆU ---
 const userDataPath = app.getPath('userData');
-if (!fs.existsSync(userDataPath)) {
-  fs.mkdirSync(userDataPath, { recursive: true });
-}
+const dbPath = path.join(userDataPath, 'du_lieu_quan_nhan_v4.db');
 
-const dbPath = path.join(userDataPath, 'military_records_v2.db'); // Đổi tên DB để tránh xung đột cấu trúc cũ
 let db;
-
-// --- HÀM BĂM MẬT KHẨU (PBKDF2) ---
-function hashPassword(password, salt = null) {
-  if (!salt) salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return { hash, salt };
-}
-
-function verifyPassword(inputPassword, storedHash, storedSalt) {
-  const hash = crypto.pbkdf2Sync(inputPassword, storedSalt, 1000, 64, 'sha512').toString('hex');
-  return hash === storedHash;
-}
-
-// --- KHỞI TẠO DATABASE ---
 try {
-  db = new Database(dbPath, { verbose: isDev ? console.log : null });
-  
-  // Tối ưu hiệu năng SQLite
+  db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
-  db.pragma('synchronous = NORMAL');
-
-  // 1. Bảng Settings (Lưu mật khẩu admin đã mã hóa)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT,
-      salt TEXT
-    );
-  `);
-
-  // Khởi tạo mật khẩu mặc định '123456' nếu chưa có
-  const checkPass = db.prepare("SELECT key FROM settings WHERE key = 'admin_password'").get();
-  if (!checkPass) {
-    const { hash, salt } = hashPassword('123456');
-    db.prepare("INSERT INTO settings (key, value, salt) VALUES (?, ?, ?)").run('admin_password', hash, salt);
-    console.log('Đã khởi tạo mật khẩu mặc định: 123456');
-  }
-
-  // 2. Bảng Quân nhân (Personnel) - Tách cột để tối ưu query
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS personnel (
-      id TEXT PRIMARY KEY,
-      ho_ten TEXT,
-      don_vi_id TEXT,
-      cap_bac TEXT,
-      chuc_vu TEXT,
-      trinh_do_van_hoa TEXT,
-      is_dang_vien INTEGER, -- 0: Chưa, 1: Đảng viên
-      has_vi_pham INTEGER,  -- 0: Không, 1: Có
-      search_text TEXT,     -- Gộp tên, cccd, sdt để tìm kiếm nhanh
-      full_data TEXT,       -- JSON gốc chứa toàn bộ thông tin chi tiết
-      createdAt INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_don_vi ON personnel(don_vi_id);
-    CREATE INDEX IF NOT EXISTS idx_ho_ten ON personnel(ho_ten);
-    CREATE INDEX IF NOT EXISTS idx_search ON personnel(search_text);
-  `);
-
-  // 3. Bảng Đơn vị (Units)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS units (
-      id TEXT PRIMARY KEY,
-      name TEXT,
-      parentId TEXT
-    );
-  `);
-
 } catch (err) {
-  console.error('CRITICAL ERROR: Không thể khởi tạo cơ sở dữ liệu:', err);
+  console.error("Lỗi khởi tạo DB:", err);
 }
 
-function createWindow() {
-  const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    title: "Hệ thống Quản lý Quân nhân - QNManager",
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false
-    },
-    icon: path.join(__dirname, 'public/icon.png') // Đảm bảo bạn có file icon
-  });
-
-  win.loadURL(
-    isDev 
-      ? 'http://localhost:3000' 
-      : `file://${path.join(__dirname, 'index.html')}`
+db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+  CREATE TABLE IF NOT EXISTS units (id TEXT PRIMARY KEY, name TEXT NOT NULL, parentId TEXT);
+  CREATE TABLE IF NOT EXISTS personnel (
+    id TEXT PRIMARY KEY,
+    ho_ten TEXT NOT NULL,
+    cccd TEXT UNIQUE,
+    don_vi_id TEXT,
+    cap_bac TEXT,
+    chuc_vu TEXT,
+    sdt_rieng TEXT,
+    que_quan TEXT,
+    json_data TEXT,
+    updatedAt INTEGER
   );
+  CREATE INDEX IF NOT EXISTS idx_p_search ON personnel(ho_ten, cccd, sdt_rieng);
+  CREATE INDEX IF NOT EXISTS idx_p_unit ON personnel(don_vi_id);
+`);
 
-  // Ẩn menu mặc định để ứng dụng giống App hơn
-  win.setMenuBarVisibility(false); 
-
-  if (isDev) {
-    win.webContents.openDevTools();
-  }
-}
-
-// --- IPC HANDLERS: XỬ LÝ LOGIC NGHIỆP VỤ ---
-
-// 1. Xác thực mật khẩu an toàn
-ipcMain.handle('auth-login', async (event, inputPassword) => {
-  try {
-    const record = db.prepare("SELECT value, salt FROM settings WHERE key = 'admin_password'").get();
-    if (!record) return false;
-    return verifyPassword(inputPassword, record.value, record.salt);
-  } catch (err) {
-    console.error('Auth error:', err);
-    return false;
-  }
-});
-
-ipcMain.handle('auth-change-password', async (event, newPassword) => {
-  try {
-    const { hash, salt } = hashPassword(newPassword);
-    db.prepare("UPDATE settings SET value = ?, salt = ? WHERE key = 'admin_password'").run(hash, salt);
-    return true;
-  } catch (err) {
-    console.error('Change pass error:', err);
-    return false;
-  }
-});
-
-// 2. Lấy danh sách quân nhân (Có lọc tại SQL)
 ipcMain.handle('db-get-personnel', async (event, filters = {}) => {
+  let query = 'SELECT * FROM personnel WHERE 1=1';
+  const params = [];
+
+  // 1. TỪ KHÓA TÌM KIẾM
+  if (filters.keyword) {
+    query += ' AND (ho_ten LIKE ? OR cccd LIKE ? OR sdt_rieng LIKE ? OR que_quan LIKE ?)';
+    const k = `%${filters.keyword}%`;
+    params.push(k, k, k, k);
+  }
+
+  // 2. ĐƠN VỊ
+  if (filters.unitId && filters.unitId !== 'all') {
+    query += ' AND don_vi_id = ?';
+    params.push(filters.unitId);
+  }
+
+  // 3. QUÂN HÀM
+  if (filters.rank && filters.rank !== 'all') {
+    query += ' AND cap_bac = ?';
+    params.push(filters.rank);
+  }
+
+  // 4. CHỨC VỤ
+  if (filters.position && filters.position !== 'all') {
+    query += ' AND chuc_vu LIKE ?';
+    params.push(`%${filters.position}%`);
+  }
+
+  // 5. TRÌNH ĐỘ HỌC VẤN (Sâu trong JSON)
+  if (filters.education && filters.education !== 'all') {
+    query += " AND json_extract(json_data, '$.trinh_do_van_hoa') LIKE ?";
+    params.push(`%${filters.education}%`);
+  }
+
+  // 6. DIỆN CHÍNH TRỊ (Dựa vào ngày vào Đảng)
+  if (filters.political === 'dang_vien') {
+    query += " AND (json_extract(json_data, '$.vao_dang_ngay') IS NOT NULL AND json_extract(json_data, '$.vao_dang_ngay') != '')";
+  } else if (filters.political === 'quan_chung') {
+    query += " AND (json_extract(json_data, '$.vao_dang_ngay') IS NULL OR json_extract(json_data, '$.vao_dang_ngay') = '')";
+  }
+
+  // 7. YẾU TỐ NƯỚC NGOÀI
+  if (filters.foreignElement === 'has_relatives') {
+    query += " AND json_extract(json_data, '$.yeu_to_nuoc_ngoai.than_nhan[0]') IS NOT NULL";
+  } else if (filters.foreignElement === 'has_passport') {
+    query += " AND json_extract(json_data, '$.yeu_to_nuoc_ngoai.ho_chieu.da_co') = 1";
+  }
+
+  // 8. HOÀN CẢNH GIA ĐÌNH
+  if (filters.familyStatus === 'poor') {
+    query += " AND json_extract(json_data, '$.thong_tin_gia_dinh_chung.muc_song') = 'Khó khăn'";
+  } else if (filters.familyStatus === 'violation') {
+    query += " AND json_extract(json_data, '$.thong_tin_gia_dinh_chung.lich_su_vi_pham_nguoi_than.co_khong') = 1";
+  } else if (filters.familyStatus === 'special_circumstances') {
+    query += " AND (json_extract(json_data, '$.y_kien_nguyen_vong') IS NOT NULL AND json_extract(json_data, '$.y_kien_nguyen_vong') != '')";
+  }
+
+  // 9. TÌNH TRẠNG HÔN NHÂN
+  if (filters.marital === 'da_ket_hon') {
+    query += " AND json_extract(json_data, '$.quan_he_gia_dinh.vo') IS NOT NULL";
+  } else if (filters.marital === 'doc_than') {
+    query += " AND json_extract(json_data, '$.quan_he_gia_dinh.vo') IS NULL";
+  }
+
+  // 10. AN NINH - KỶ LUẬT - VAY NỢ
+  if (filters.security === 'vay_no') {
+    query += " AND json_extract(json_data, '$.tai_chinh_suc_khoe.vay_no.co_khong') = 1";
+  } else if (filters.security === 'vi_pham') {
+    query += " AND json_extract(json_data, '$.lich_su_vi_pham.vi_pham_dia_phuong.co_khong') = 1";
+  } else if (filters.security === 'ma_tuy') {
+    query += " AND json_extract(json_data, '$.lich_su_vi_pham.ma_tuy.co_khong') = 1";
+  }
+
+  query += ' ORDER BY updatedAt DESC';
+
   try {
-    let query = "SELECT full_data FROM personnel WHERE 1=1";
-    const params = [];
-
-    // Lọc theo Đơn vị
-    if (filters.unitId && filters.unitId !== 'all') {
-      query += " AND don_vi_id = ?";
-      params.push(filters.unitId);
-    }
-
-    // Lọc theo Từ khóa (Full text search trên cột search_text)
-    if (filters.keyword) {
-      query += " AND search_text LIKE ?";
-      params.push(`%${filters.keyword}%`);
-    }
-
-    // Lọc theo Cấp bậc
-    if (filters.rank && filters.rank !== 'all') {
-      query += " AND cap_bac = ?";
-      params.push(filters.rank);
-    }
-
-    // Lọc theo Học vấn
-    if (filters.education && filters.education !== 'all') {
-      query += " AND trinh_do_van_hoa = ?";
-      params.push(filters.education);
-    }
-
-    // Lọc theo Đảng viên
-    if (filters.political && filters.political !== 'all') {
-      if (filters.political === 'dang_vien') query += " AND is_dang_vien = 1";
-      if (filters.political === 'quan_chung') query += " AND is_dang_vien = 0";
-    }
-
-    // Lọc theo An ninh (Vi phạm)
-    if (filters.security === 'vi_pham') {
-      query += " AND has_vi_pham = 1";
-    }
-    // Lưu ý: Các lọc phức tạp hơn (vay nợ, nước ngoài) vẫn cần xử lý thêm hoặc tách cột nếu cần.
-    // Hiện tại ta ưu tiên hiệu năng các lọc chính.
-
-    query += " ORDER BY createdAt DESC";
-
     const rows = db.prepare(query).all(...params);
-    
-    // Parse lại JSON để trả về cho Frontend
-    return rows.map(row => JSON.parse(row.full_data));
-
-  } catch (err) {
-    console.error('Lỗi truy vấn personnel:', err);
+    return rows.map(row => ({
+      ...JSON.parse(row.json_data || '{}'),
+      id: row.id,
+      ho_ten: row.ho_ten,
+      cccd: row.cccd,
+      don_vi_id: row.don_vi_id,
+      cap_bac: row.cap_bac,
+      chuc_vu: row.chuc_vu,
+      sdt_rieng: row.sdt_rieng
+    }));
+  } catch (e) {
+    console.error("Query error:", e);
     return [];
   }
 });
 
-// 3. Lưu hồ sơ (Tự động tách dữ liệu vào các cột)
+ipcMain.handle('db-save-setting', async (e, { key, value }) => {
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, JSON.stringify(value));
+  return true;
+});
+
+ipcMain.handle('db-get-setting', async (e, key) => {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return row ? JSON.parse(row.value) : null;
+});
+
 ipcMain.handle('db-save-personnel', async (event, { id, data }) => {
-  try {
-    const fullDataStr = JSON.stringify(data);
-    
-    // Chuẩn bị dữ liệu cho các cột tìm kiếm
-    const searchText = `${data.ho_ten || ''} ${data.cccd || ''} ${data.sdt_rieng || ''} ${data.nang_khieu_so_truong || ''}`.toLowerCase();
-    const isDangVien = (data.vao_dang_ngay && data.vao_dang_ngay.trim() !== '') ? 1 : 0;
-    
-    // Kiểm tra cờ vi phạm (Logic đơn giản)
-    const hasViPham = (
-      data.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong || 
-      data.lich_su_vi_pham?.danh_bac?.co_khong || 
-      data.lich_su_vi_pham?.ma_tuy?.co_khong
-    ) ? 1 : 0;
-
-    const stmt = db.prepare(`
-      INSERT OR REPLACE INTO personnel (
-        id, ho_ten, don_vi_id, cap_bac, chuc_vu, trinh_do_van_hoa, 
-        is_dang_vien, has_vi_pham, search_text, full_data, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    return stmt.run(
-      id, 
-      data.ho_ten, 
-      data.don_vi_id, 
-      data.cap_bac, 
-      data.chuc_vu, 
-      data.trinh_do_van_hoa, 
-      isDangVien,
-      hasViPham,
-      searchText,
-      fullDataStr,
-      data.createdAt || Date.now()
-    );
-  } catch (err) {
-    console.error('Lỗi lưu personnel:', err);
-    throw err;
-  }
+  const now = Date.now();
+  const jsonStr = JSON.stringify(data);
+  db.prepare(`INSERT OR REPLACE INTO personnel (id, ho_ten, cccd, don_vi_id, cap_bac, chuc_vu, sdt_rieng, que_quan, json_data, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, data.ho_ten, data.cccd, data.don_vi_id, data.cap_bac, data.chuc_vu, data.sdt_rieng, data.noi_sinh, jsonStr, now);
+  return true;
 });
 
-// 4. Xóa hồ sơ
-ipcMain.handle('db-delete-personnel', async (event, id) => {
-  try {
-    return db.prepare('DELETE FROM personnel WHERE id = ?').run(id);
-  } catch (err) {
-    console.error('Lỗi xóa personnel:', err);
-    throw err;
-  }
-});
-
-// --- UNIT HANDLERS ---
-ipcMain.handle('db-get-units', async () => {
-  return db.prepare('SELECT * FROM units').all();
-});
-
+ipcMain.handle('db-get-units', async () => db.prepare('SELECT * FROM units').all());
 ipcMain.handle('db-save-unit', async (event, unit) => {
-  const stmt = db.prepare('INSERT OR REPLACE INTO units (id, name, parentId) VALUES (?, ?, ?)');
-  return stmt.run(unit.id, unit.name, unit.parentId);
+  db.prepare('INSERT OR REPLACE INTO units (id, name, parentId) VALUES (?,?,?)').run(unit.id, unit.name, unit.parentId);
+  return true;
+});
+ipcMain.handle('db-delete-unit', async (e, id) => db.prepare('DELETE FROM units WHERE id=?').run(id));
+
+ipcMain.handle('db-delete-personnel', async (e, id) => db.prepare('DELETE FROM personnel WHERE id=?').run(id));
+
+ipcMain.handle('db-get-stats', async () => {
+  const pCount = db.prepare('SELECT COUNT(*) as count FROM personnel').get().count;
+  const uCount = db.prepare('SELECT COUNT(*) as count FROM units').get().count;
+  return { personnelCount: pCount, unitCount: uCount, dbSize: 'N/A', status: 'SQLite Connected' };
 });
 
-ipcMain.handle('db-delete-unit', async (event, id) => {
-  return db.prepare('DELETE FROM units WHERE id = ?').run(id);
-});
-
-// --- SYSTEM HANDLERS ---
 ipcMain.handle('db-reset-all', async () => {
-  try {
-    const transaction = db.transaction(() => {
-        db.prepare('DELETE FROM personnel').run();
-        db.prepare('DELETE FROM units').run();
-        // Không xóa bảng settings để giữ mật khẩu
-    });
-    transaction();
-    return { success: true };
-  } catch (err) {
-    console.error('Lỗi reset database:', err);
-    throw err;
-  }
+  db.prepare('DELETE FROM personnel').run();
+  db.prepare('DELETE FROM units').run();
+  return { success: true };
 });
 
-// --- APP LIFECYCLE ---
+ipcMain.handle('auth-login', async (event, password) => {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('admin_password');
+  if (!row) return password === '123456';
+  return JSON.parse(row.value) === password;
+});
+
+ipcMain.handle('auth-change-password', async (e, newPass) => {
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('admin_password', JSON.stringify(newPass));
+  return true;
+});
+
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1500, height: 950,
+    title: "QN-Manager Pro V5.0",
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true }
+  });
+  win.loadFile(path.join(__dirname, 'dist/index.html'));
+  win.setMenuBarVisibility(false);
+}
 app.whenReady().then(createWindow);
-
-app.on('window-all-closed', () => {
-  if (db) db.close();
-  if (process.platform !== 'darwin') app.quit();
-});

@@ -1,26 +1,28 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
+console.log('[Preload] Script is running and exposing API...');
+
+// Expose ra window.electronAPI
 contextBridge.exposeInMainWorld('electronAPI', {
-  // --- AUTHENTICATION ---
-  login: (password) => ipcRenderer.invoke('auth-login', password),
-  changePassword: (newPass) => ipcRenderer.invoke('auth-change-password', newPass),
+  // Auth
+  login: (p) => ipcRenderer.invoke('auth:login', p),
+  changePassword: (p) => ipcRenderer.invoke('auth:changePassword', p),
   
-  // --- SETTINGS (Lưu cấu hình bền vững) ---
-  saveSetting: (payload) => ipcRenderer.invoke('db-save-setting', payload),
-  getSetting: (key) => ipcRenderer.invoke('db-get-setting', key),
-
-  // --- QUẢN LÝ QUÂN NHÂN ---
-  getPersonnel: (filters) => ipcRenderer.invoke('db-get-personnel', filters),
-  savePersonnel: (payload) => ipcRenderer.invoke('db-save-personnel', payload),
-  deletePersonnel: (id) => ipcRenderer.invoke('db-delete-personnel', id),
+  // Personnel
+  getPersonnel: (f) => ipcRenderer.invoke('db:getPersonnel', f),
+  savePersonnel: (p) => ipcRenderer.invoke('db:savePersonnel', p),
+  deletePersonnel: (id) => ipcRenderer.invoke('db:deletePersonnel', id),
   
-  // --- QUẢN LÝ ĐƠN VỊ ---
-  getUnits: () => ipcRenderer.invoke('db-get-units'),
-  saveUnit: (unit) => ipcRenderer.invoke('db-save-unit', unit),
-  deleteUnit: (id) => ipcRenderer.invoke('db-delete-unit', id),
-
-  // --- HỆ THỐNG ---
-  getSystemStats: () => ipcRenderer.invoke('db-get-stats'),
-  resetDatabase: () => ipcRenderer.invoke('db-reset-all'),
+  // Units
+  getUnits: () => ipcRenderer.invoke('db:getUnits'),
+  saveUnit: (u) => ipcRenderer.invoke('db:saveUnit', u),
+  deleteUnit: (id) => ipcRenderer.invoke('db:deleteUnit', id),
+  
+  // System
+  getStats: () => ipcRenderer.invoke('db:getStats'),
+  getSystemStats: () => ipcRenderer.invoke('db:getStats'),
+  resetDatabase: () => ipcRenderer.invoke('db:reset'),
+  saveSetting: (p) => ipcRenderer.invoke('db:saveSetting', p),
+  getSetting: (k) => ipcRenderer.invoke('db:getSetting', k)
 });

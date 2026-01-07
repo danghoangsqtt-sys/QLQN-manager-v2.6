@@ -1,243 +1,267 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Unit, MilitaryPersonnel } from '../types';
 import { db } from '../store';
+import { 
+  Shield, Flag, Target, Folder, 
+  ChevronRight, ChevronDown, 
+  Users, ListFilter, Plus,
+  Trash2, Landmark, MoreHorizontal,
+  UserCheck, Layers
+} from 'lucide-react';
 
 interface UnitTreeProps {
   units: Unit[];
   onRefresh: () => void;
+  onViewDetailedList: (unitId: string) => void;
 }
 
-const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh }) => {
-  const [newUnitName, setNewUnitName] = useState('');
-  const [selectedParent, setSelectedParent] = useState<string | null>(null);
+const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh, onViewDetailedList }) => {
   const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(['1']));
   const [allPersonnel, setAllPersonnel] = useState<MilitaryPersonnel[]>([]);
-  const [counts, setCounts] = useState<{ [key: string]: { direct: number; total: number } }>({});
+  const [newUnitName, setNewUnitName] = useState('');
+  const [isAddMode, setIsAddMode] = useState(false);
+  const [targetParentId, setTargetParentId] = useState<string | null>(null);
 
-  // Tải toàn bộ quân nhân một lần duy nhất khi mount
   useEffect(() => {
-    const loadData = async () => {
+    const loadPersonnel = async () => {
       const data = await db.getPersonnel();
       setAllPersonnel(data);
     };
-    loadData();
+    loadPersonnel();
   }, [units]);
 
-  // Tính toán tất cả số lượng quân số cho toàn bộ cây
-  useEffect(() => {
-    const newCounts: { [key: string]: { direct: number; total: number } } = {};
+  // Icon thông minh
+  const getUnitIcon = (name: string, level: number) => {
+    const n = name.toLowerCase();
+    if (n.includes('sư đoàn')) return <Shield size={14} className="text-green-700" />;
+    if (n.includes('trung đoàn')) return <Flag size={14} className="text-amber-600" />;
+    if (n.includes('tiểu đoàn')) return <Target size={14} className="text-emerald-600" />;
+    if (n.includes('đại đội') || n.includes('trung đội') || n.includes('đội') || n.includes('ban')) return <Folder size={14} className="text-blue-500" />;
+    return level === 0 ? <Shield size={14} /> : <Folder size={14} />;
+  };
+
+  // Tính toán số liệu thống kê (bao gồm đệ quy con)
+  const unitStats = useMemo(() => {
+    const stats: Record<string, { total: number; party: number }> = {};
     
-    const getChildUnits = (parentId: string): string[] => {
-      let ids = [parentId];
-      const children = units.filter(u => u.parentId === parentId);
-      children.forEach(child => {
-        ids = [...ids, ...getChildUnits(child.id)];
+    const getBranchPersonnel = (uId: string): MilitaryPersonnel[] => {
+      let results = allPersonnel.filter(p => p.don_vi_id === uId);
+      units.filter(u => u.parentId === uId).forEach(child => {
+        results = [...results, ...getBranchPersonnel(child.id)];
       });
-      return ids;
+      return results;
     };
 
-    units.forEach(unit => {
-      const direct = allPersonnel.filter(p => p.don_vi_id === unit.id).length;
-      const allUnitIdsInBranch = getChildUnits(unit.id);
-      const total = allPersonnel.filter(p => allUnitIdsInBranch.includes(p.don_vi_id)).length;
-      newCounts[unit.id] = { direct, total };
+    units.forEach(u => {
+      const branchPersonnel = getBranchPersonnel(u.id);
+      const uniquePersonnel = Array.from(new Set(branchPersonnel.map(p => p.id)))
+        .map(id => branchPersonnel.find(p => p.id === id)!);
+      
+      const partyCount = uniquePersonnel.filter(p => !!p.vao_dang_ngay).length;
+      stats[u.id] = { total: uniquePersonnel.length, party: partyCount };
     });
 
-    setCounts(newCounts);
+    return stats;
   }, [allPersonnel, units]);
 
-  const handleAdd = async () => {
-    if (!newUnitName) {
-      alert('Vui lòng nhập tên đơn vị!');
-      return;
-    }
-    await db.addUnit(newUnitName, selectedParent);
+  const toggleExpand = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = new Set(expandedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setExpandedIds(next);
+  };
+
+  const handleAddUnit = async () => {
+    if (!newUnitName) return;
+    await db.addUnit(newUnitName, targetParentId);
     setNewUnitName('');
+    setIsAddMode(false);
     onRefresh();
   };
 
-  const exportToCSV = async (unitId: string, unitName: string) => {
-    let listToExport: MilitaryPersonnel[] = [];
-    
-    if (unitId === 'all') {
-      listToExport = allPersonnel;
-    } else {
-      const getChildUnits = (pId: string): string[] => {
-        let ids = [pId];
-        units.filter(u => u.parentId === pId).forEach(c => {
-          ids = [...ids, ...getChildUnits(c.id)];
-        });
-        return ids;
-      };
-      const allIds = getChildUnits(unitId);
-      listToExport = allPersonnel.filter(p => allIds.includes(p.don_vi_id));
+  const handleDeleteUnit = async (id: string) => {
+    if (confirm(`Bạn có chắc chắn muốn xóa đơn vị này và tất cả các đơn vị con trực thuộc?`)) {
+      await db.deleteUnit(id);
+      setActiveUnitId(null);
+      onRefresh();
     }
-    
-    if (listToExport.length === 0) {
-      alert(`Đơn vị ${unitName} hiện chưa có quân nhân nào.`);
-      return;
-    }
-
-    let csvContent = "\ufeff"; 
-    csvContent += "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc\n\n";
-    csvContent += `DANH SÁCH BIÊN CHẾ QUÂN NHÂN - ĐƠN VỊ: ${unitName.toUpperCase()}\n`;
-    csvContent += `Ngày xuất dữ liệu: ${new Date().toLocaleDateString('vi-VN')}\n\n`;
-
-    const headers = ["STT", "Họ và tên", "Cấp bậc", "Chức vụ", "Ngày sinh", "Số CCCD", "SĐT", "HKTT", "Nhập ngũ", "Vào Đảng", "Học vấn"];
-    csvContent += headers.join(",") + "\n";
-
-    listToExport.forEach((p, index) => {
-      const row = [
-        index + 1,
-        `"${p.ho_ten}"`,
-        `"${p.cap_bac}"`,
-        `"${p.chuc_vu}"`,
-        `"${p.ngay_sinh}"`,
-        `"'${p.cccd}"`, 
-        `"${p.sdt_rieng}"`,
-        `"${(p.ho_khau_thu_tru || '').replace(/"/g, '""')}"`, 
-        `"${p.nhap_ngu_ngay}"`,
-        `"${p.vao_dang_ngay || 'Chưa vào Đảng'}"`,
-        `"${p.trinh_do_van_hoa}"`
-      ];
-      csvContent += row.join(",") + "\n";
-    });
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `BIEN_CHE_${unitName.replace(/\s+/g, '_').toUpperCase()}_${Date.now()}.csv`;
-    link.click();
-    db.log('INFO', `Đã xuất danh sách biên chế đơn vị: ${unitName}`);
   };
 
-  const renderTree = (parentId: string | null = null, level: number = 0) => {
-    const children = units.filter(u => u.parentId === parentId);
-    if (children.length === 0) return null;
+  const activeUnit = units.find(u => u.id === activeUnitId);
+  const activeStats = activeUnitId ? unitStats[activeUnitId] : null;
 
+  const renderSidebarItem = (parentId: string | null = null, level: number = 0) => {
+    const children = units.filter(u => u.parentId === parentId);
     return (
-      <div className={`${level > 0 ? 'ml-6 border-l-2 border-green-100/50 pl-2' : ''} space-y-1`}>
-        {children.map(unit => (
-          <div key={unit.id} className="animate-fade-in">
-            <div 
-              onClick={() => setActiveUnitId(unit.id)}
-              className={`flex items-center justify-between p-3 rounded-xl transition-all cursor-pointer group ${
-                activeUnitId === unit.id 
-                ? 'bg-[#14452F] text-white shadow-lg' 
-                : 'hover:bg-green-50 text-gray-700'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className={`p-1.5 rounded-lg ${activeUnitId === unit.id ? 'bg-white/20' : 'bg-gray-100 group-hover:bg-green-100'}`}>
-                  <svg className={`w-4 h-4 ${activeUnitId === unit.id ? 'text-white' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" strokeWidth="2"/>
-                  </svg>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-black uppercase tracking-tight">{unit.name}</span>
-                  <span className={`text-[8px] font-bold ${activeUnitId === unit.id ? 'text-green-300' : 'text-gray-400'}`}>
-                    Quân số: {counts[unit.id]?.total || 0}
+      <div className={`${level > 0 ? 'ml-3 border-l border-slate-100 pl-2' : ''} space-y-0.5 mt-0.5`}>
+        {children.map(unit => {
+          const isExpanded = expandedIds.has(unit.id);
+          const hasChildren = units.some(u => u.parentId === unit.id);
+          const isActive = activeUnitId === unit.id;
+          const stats = unitStats[unit.id];
+
+          return (
+            <div key={unit.id} className="select-none">
+              <div 
+                onClick={() => setActiveUnitId(unit.id)}
+                className={`group flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer transition-all ${
+                  isActive 
+                  ? 'bg-[#14452F] text-white shadow-md' 
+                  : 'hover:bg-slate-50 text-slate-600'
+                }`}
+              >
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <div onClick={(e) => toggleExpand(unit.id, e)} className="p-0.5 hover:bg-black/5 rounded cursor-pointer shrink-0">
+                    {hasChildren ? (
+                      isExpanded ? <ChevronDown size={12} className={isActive ? 'text-white' : 'text-slate-400'} /> : <ChevronRight size={12} className={isActive ? 'text-white' : 'text-slate-400'} />
+                    ) : <div className="w-3" />}
+                  </div>
+                  <div className="shrink-0">{getUnitIcon(unit.name, level)}</div>
+                  <span className={`text-[11px] font-bold truncate tracking-tight uppercase ${isActive ? 'text-white' : 'text-slate-700'}`}>
+                    {unit.name}
                   </span>
                 </div>
+                <div className={`text-[8px] font-black px-1.5 py-0.5 rounded tracking-tighter shrink-0 ${
+                  isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-400'
+                }`}>
+                  {stats?.total || 0} QN
+                </div>
               </div>
-              
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setSelectedParent(unit.id); }}
-                  className="p-1.5 bg-green-500/20 text-green-700 rounded-md hover:bg-green-500 hover:text-white transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="2.5"/></svg>
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); if(confirm(`Xóa đơn vị ${unit.name}?`)) { db.deleteUnit(unit.id).then(onRefresh); } }}
-                  className="p-1.5 bg-red-500/20 text-red-700 rounded-md hover:bg-red-500 hover:text-white transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2"/></svg>
-                </button>
-              </div>
+              {isExpanded && renderSidebarItem(unit.id, level + 1)}
             </div>
-            {renderTree(unit.id, level + 1)}
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
 
   return (
-    <div className="grid grid-cols-12 gap-8 animate-fade-in pb-20">
-      <div className="col-span-12 flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <div>
-          <h2 className="text-sm font-black text-[#14452F] uppercase tracking-widest flex items-center gap-3">
-             <div className="w-2 h-6 bg-[#d4af37] rounded-full"></div>
-             Quản lý Cơ cấu Tổ chức
-          </h2>
-          <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">Sơ đồ phân cấp đơn vị chiến đấu</p>
-        </div>
-        <button onClick={() => exportToCSV('all', 'TOÀN ĐƠN VỊ')} className="gold-btn px-6 py-3 rounded-xl font-black text-[10px] uppercase shadow-lg flex items-center gap-2">
-           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeWidth="2"/></svg>
-           Xuất biên chế tổng (.csv)
-        </button>
+    <div className="flex flex-col h-full animate-fade-in px-4">
+      <div className="mb-6">
+        <h1 className="text-xl font-black text-[#14452F] uppercase tracking-tighter">Biên chế tổ chức</h1>
+        <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">Quản lý sơ đồ đơn vị và quân số đệ quy.</p>
       </div>
 
-      <div className="col-span-12 lg:col-span-5 bg-white rounded-[2rem] shadow-xl border border-gray-100 overflow-hidden flex flex-col h-[750px]">
-        <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
-           <h3 className="flex items-center gap-3 font-black text-[#14452F] uppercase text-xs">
-              Sơ đồ Tổ chức
-           </h3>
-           {selectedParent && (
-             <button onClick={() => setSelectedParent(null)} className="text-[10px] font-black text-rose-500 uppercase flex items-center gap-1">
-               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="3"/></svg>
-               Hủy cấp cha
-             </button>
-           )}
-        </div>
-        <div className="flex-1 overflow-y-auto p-6 scrollbar-hide space-y-4">
-          {renderTree(null)}
-        </div>
-      </div>
-
-      <div className="col-span-12 lg:col-span-7 space-y-8">
-        <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-gray-100 relative overflow-hidden">
-           <h3 className="flex items-center gap-3 font-black text-[#14452F] uppercase text-sm mb-10 pb-4 border-b">Thêm Đơn Vị Mới</h3>
-           <div className="space-y-8">
-              <div className="grid grid-cols-2 gap-8">
-                <div>
-                  <label className="block text-[11px] font-black text-gray-400 mb-3 uppercase">Tên Đơn Vị</label>
-                  <input type="text" className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none font-black text-[#14452F]" value={newUnitName} onChange={e => setNewUnitName(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-black text-gray-400 mb-3 uppercase">Trực Thuộc</label>
-                  <select className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none font-black text-xs" value={selectedParent || ''} onChange={e => setSelectedParent(e.target.value || null)}>
-                    <option value="">-- Cấp cao nhất --</option>
-                    {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <button onClick={handleAdd} className="px-12 py-5 military-green text-white rounded-[1.5rem] font-black uppercase text-xs tracking-widest shadow-2xl active:scale-95 transition-all">Lưu Đơn Vị</button>
-              </div>
-           </div>
-        </div>
-
-        {activeUnitId && counts[activeUnitId] && (
-          <div className="bg-[#14452F] p-8 rounded-[2.5rem] shadow-2xl text-white animate-slide-up">
-            <h3 className="text-2xl font-black uppercase tracking-tighter mb-6">{units.find(u => u.id === activeUnitId)?.name}</h3>
-            <div className="grid grid-cols-2 gap-4">
-               <div className="p-5 bg-white/5 rounded-2xl border border-white/10">
-                  <p className="text-[9px] font-black text-green-400 uppercase">Trực tiếp</p>
-                  <p className="text-2xl font-black">{counts[activeUnitId].direct}</p>
-               </div>
-               <div className="p-5 bg-white/5 rounded-2xl border border-white/10">
-                  <p className="text-[9px] font-black text-green-400 uppercase">Toàn đơn vị con</p>
-                  <p className="text-2xl font-black">{counts[activeUnitId].total}</p>
-               </div>
-            </div>
-            <button onClick={() => exportToCSV(activeUnitId, units.find(u => u.id === activeUnitId)?.name || '')} className="w-full mt-6 py-5 bg-white text-[#14452F] rounded-2xl font-black uppercase text-xs shadow-xl flex items-center justify-center gap-3">Xuất biên chế (.csv)</button>
+      <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
+        {/* Sidebar */}
+        <div className="col-span-12 lg:col-span-4 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col overflow-hidden">
+          <div className="px-5 py-3 border-b flex justify-between items-center bg-slate-50/50">
+            <h3 className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Danh mục đơn vị</h3>
+            <button 
+              onClick={() => { setTargetParentId(null); setIsAddMode(true); }}
+              className="p-1.5 bg-white border border-slate-200 text-[#14452F] rounded-lg hover:bg-slate-50 transition-all shadow-sm"
+              title="Thêm đơn vị cấp cao nhất"
+            >
+              <Plus size={14} />
+            </button>
           </div>
-        )}
+          <div className="flex-1 overflow-y-auto p-3 scrollbar-hide">
+            {renderSidebarItem(null)}
+          </div>
+        </div>
+
+        {/* Dashboard */}
+        <div className="col-span-12 lg:col-span-8 h-full">
+          {activeUnitId && activeStats ? (
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-lg p-10 flex flex-col gap-8 h-full">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-center text-[#14452F] shadow-inner">
+                    <Landmark size={24} />
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-0.5">Đơn vị đang xem</p>
+                    <h2 className="text-2xl font-black text-[#14452F] tracking-tighter uppercase leading-none">{activeUnit?.name}</h2>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => handleDeleteUnit(activeUnitId)}
+                  className="p-3 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                  title="Xóa đơn vị này"
+                >
+                  <Trash2 size={20} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-8 flex flex-col items-center justify-center text-center">
+                  <Users size={20} className="text-slate-300 mb-4" />
+                  <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Tổng quân số (Gồm đơn vị con)</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-black text-slate-800 tracking-tighter">{activeStats.total}</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase">QN</span>
+                  </div>
+                </div>
+
+                <div className="bg-red-50/50 border border-red-100 rounded-[2rem] p-8 flex flex-col items-center justify-center text-center">
+                  <UserCheck size={20} className="text-red-300 mb-4" />
+                  <p className="text-[10px] font-black text-red-800/40 uppercase mb-2">Đảng viên</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-black text-red-600 tracking-tighter">{activeStats.party}</span>
+                    <span className="text-[10px] font-black text-red-300 uppercase">Đ/C</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-auto flex flex-col gap-3 pt-6 border-t border-slate-50">
+                <button 
+                  onClick={() => onViewDetailedList(activeUnitId)}
+                  className="w-full py-5 bg-[#14452F] text-white rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-green-800 transition-all flex items-center justify-center gap-3"
+                >
+                  <ListFilter size={20} /> Danh sách chi tiết toàn đơn vị
+                </button>
+                
+                <button 
+                  onClick={() => { setTargetParentId(activeUnitId); setIsAddMode(true); }}
+                  className="w-full py-5 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-3"
+                >
+                  <Layers size={20} className="text-blue-500" /> Thêm đơn vị trực thuộc
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="h-full bg-white rounded-[2.5rem] border border-slate-100 border-dashed flex flex-col items-center justify-center text-slate-200 p-10 text-center">
+              <Shield size={60} className="opacity-10 mb-6" />
+              <h3 className="text-xs font-black uppercase tracking-[0.3em]">Chọn một đơn vị để quản lý</h3>
+            </div>
+          )}
+        </div>
       </div>
+
+      {isAddMode && (
+        <div className="fixed inset-0 z-[600] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl space-y-6 border border-white/20">
+            <div>
+              <h3 className="text-lg font-black text-[#14452F] uppercase tracking-tighter">Thêm đơn vị mới</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
+                {targetParentId ? `Trực thuộc: ${units.find(u => u.id === targetParentId)?.name}` : 'Cấp cao nhất'}
+              </p>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase mb-1.5 block ml-1 tracking-widest">Tên đơn vị</label>
+                <input 
+                  autoFocus
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-sm text-slate-700 placeholder:text-slate-300"
+                  value={newUnitName}
+                  onChange={(e) => setNewUnitName(e.target.value)}
+                  placeholder="VD: Tiểu đoàn 1, Đại đội 2..."
+                  onKeyDown={e => e.key === 'Enter' && handleAddUnit()}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setIsAddMode(false)} className="flex-1 py-4 bg-slate-100 text-slate-400 rounded-xl font-black uppercase text-[10px] tracking-widest">Hủy bỏ</button>
+              <button onClick={handleAddUnit} className="flex-1 py-4 bg-[#14452F] text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-green-900/10 hover:bg-green-800 transition-all">Lưu đơn vị</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

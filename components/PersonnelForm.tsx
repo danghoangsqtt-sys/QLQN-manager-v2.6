@@ -994,10 +994,20 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
 
       </div>
 
-      {/* Footer Actions */}
+      {/* Footer Actions - Sửa lỗi màu nút bấm tại đây */}
       <div className="p-6 bg-gray-50 border-t flex justify-end gap-4 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-        <button onClick={onClose} className="px-10 py-4 bg-gray-200 text-gray-600 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-gray-300 transition-all">Hủy bỏ</button>
-        <button onClick={handleSave} className="px-16 py-4 gold-btn rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl active:scale-95 transition-all">Hoàn thành & Lưu hồ sơ</button>
+        <button 
+          onClick={onClose} 
+          className="px-10 py-4 bg-gray-200 text-gray-800 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-gray-300 transition-all border border-gray-300"
+        >
+          Hủy bỏ
+        </button>
+        <button 
+          onClick={handleSave} 
+          className="px-16 py-4 bg-[#14452F] text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-[#1a5a3d] active:scale-95 transition-all"
+        >
+          Hoàn thành & Lưu hồ sơ
+        </button>
       </div>
     </div>
   );

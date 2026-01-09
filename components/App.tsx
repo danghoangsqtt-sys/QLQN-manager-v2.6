@@ -1,12 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
-// Sửa đường dẫn: Các file này nằm cùng thư mục components
-import Dashboard from './Dashboard';
-import PersonnelForm from './PersonnelForm';
-
-// Sửa đường dẫn: Các file này nằm ở thư mục gốc (cha của components) nên dùng ../
-import { db } from '../store';
-import { Unit, AppMode } from '../types';
-
+import Dashboard from './Dashboard.tsx';
+import PersonnelForm from './PersonnelForm.tsx';
+import { db } from '../store.ts';
+import { Unit, AppMode } from '../types.ts';
 import { Lock, ShieldCheck, UserPlus, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 
 const App: React.FC = () => {

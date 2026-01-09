@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
-const isDev = require('electron-is-dev'); // Thư viện này đã có trong package.json
+const isDev = require('electron-is-dev');
 
 // CẤU HÌNH BẢO MẬT & DỮ LIỆU
 const PASSWORD_SALT = 'DHsystem_Salt_2026_Dexie';
@@ -30,8 +30,7 @@ function hashPassword(password) {
 // --- IPC HANDLERS ---
 ipcMain.handle('auth:login', (_, p) => {
   const settings = readSecureSettings();
-  const stored = settings['admin_password'] || '123456'; // Mặc định 123456 nếu chưa đổi
-  // Nếu mật khẩu lưu là hash (64 ký tự) thì so sánh hash, ngược lại so sánh plain text (lần đầu)
+  const stored = settings['admin_password'] || '123456';
   return stored.length === 64 ? hashPassword(p) === stored : p === stored;
 });
 
@@ -42,47 +41,50 @@ ipcMain.handle('auth:changePassword', (_, p) => {
   return true;
 });
 
+// Thêm handler giả lập để tránh lỗi nếu preload gọi (dù store dùng dexie)
+ipcMain.handle('db:getStats', async () => ({ status: 'OK' }));
+ipcMain.handle('db:saveSetting', async () => true);
+ipcMain.handle('db:getSetting', async () => null);
+
 // --- WINDOW MANAGEMENT ---
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
-    backgroundColor: '#14452F', // Màu nền khớp với theme ứng dụng để tránh nháy trắng
-    show: false, // Chỉ show khi đã ready
+    backgroundColor: '#14452F',
+    show: false,
     icon: path.join(__dirname, 'public/icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false, // Cần thiết cho một số API file hệ thống nếu mở rộng sau này
-      webSecurity: true, // BẬT LẠI BẢO MẬT (Quan trọng)
+      sandbox: false,
+      webSecurity: true,
     }
   });
 
-  // Cấu hình CSP (Content Security Policy) để cho phép load tài nguyên từ CDN an toàn
+  // Cấu hình CSP (Đã sửa để chạy được Dev mode)
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const devCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: http: https:;";
+    const prodCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file: https://cdn.tailwindcss.com https://fonts.googleapis.com https://fonts.gstatic.com https://esm.sh;";
+
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdn.tailwindcss.com https://fonts.googleapis.com https://fonts.gstatic.com https://esm.sh;"
-        ]
+        'Content-Security-Policy': [ isDev ? devCSP : prodCSP ]
       }
     });
   });
 
-  // LOGIC TẢI TRANG THÔNG MINH (Sửa lỗi quan trọng)
   if (isDev) {
-    // Trong môi trường Dev: Load từ Vite Server (để hỗ trợ HMR và file .tsx)
     console.log('Running in Development Mode');
     win.loadURL('http://localhost:3000'); 
-    win.webContents.openDevTools(); // Mở DevTools để debug
+    // Đã tắt tự động bật console. Nếu cần debug, nhấn Ctrl+Shift+I
+    // win.webContents.openDevTools(); 
   } else {
-    // Trong môi trường Prod: Load file đã build
     console.log('Running in Production Mode');
-    // Kiểm tra xem file index.html nằm ở đâu (thường là cùng cấp hoặc trong dist)
-    // Với cấu trúc hiện tại, giả định build xong nằm cùng thư mục
-    win.loadFile(path.join(__dirname, 'index.html'));
+    // Sửa đường dẫn để trỏ đúng vào thư mục dist khi build
+    win.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
 
   win.setMenuBarVisibility(false);
@@ -95,8 +97,6 @@ function createWindow() {
 // --- APP LIFECYCLE ---
 app.whenReady().then(() => {
   createWindow();
-  
-  // Sửa lỗi UserAgent để tránh bị chặn bởi một số dịch vụ (nếu có dùng request ngoài)
   session.defaultSession.setUserAgent(session.defaultSession.getUserAgent() + ' QNManager/7.0');
 });
 

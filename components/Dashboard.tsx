@@ -364,14 +364,14 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                  <MousePointer2 size={16} className="text-slate-300" />
                                  <span className="text-xs font-black text-slate-800 uppercase">Xuất danh sách (CSV/Excel)</span>
                               </div>
-                              <p className="text-[10px] text-slate-400 font-bold uppercase">Tab Danh sách > Nút Xuất dữ liệu</p>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase">Tab Danh sách &gt; Nút Xuất dữ liệu</p>
                            </div>
                            <div className="flex items-center justify-between group">
                               <div className="flex items-center gap-3">
                                  <MousePointer2 size={16} className="text-slate-300" />
                                  <span className="text-xs font-black text-slate-800 uppercase">In hồ sơ quân nhân cá nhân</span>
                               </div>
-                              <p className="text-[10px] text-slate-400 font-bold uppercase">Xem chi tiết > Ctrl + P</p>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase">Xem chi tiết &gt; Ctrl + P</p>
                            </div>
                         </div>
                      </section>
@@ -423,7 +423,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                            <div className="p-6 border border-red-100 rounded-2xl space-y-4">
                               <div>
                                  <p className="text-xs font-black text-slate-800 uppercase mb-1">Mất kết nối Database?</p>
-                                 <p className="text-xs text-slate-500">Vào mục <b>Thiết lập</b> > Chạy <b>"Debug Hệ thống"</b> để tự động quét lỗi kết nối và khôi phục Index dữ liệu.</p>
+                                 <p className="text-xs text-slate-500">Vào mục <b>Thiết lập</b> &gt; Chạy <b>"Debug Hệ thống"</b> để tự động quét lỗi kết nối và khôi phục Index dữ liệu.</p>
                               </div>
                               <div className="pt-4 border-t border-red-50">
                                  <p className="text-xs font-black text-slate-800 uppercase mb-1">Quên mật khẩu cán bộ?</p>

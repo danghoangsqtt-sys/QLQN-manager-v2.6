@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import Dashboard from './Dashboard.tsx';
-import PersonnelForm from './PersonnelForm.tsx';
-import { db } from '../store.ts';
-import { Unit, AppMode } from '../types.ts';
+import Dashboard from './components/Dashboard.tsx';
+import PersonnelForm from './components/PersonnelForm.tsx';
+import { db } from './store.ts';
+import { Unit, AppMode } from './types.ts';
 import { Lock, ShieldCheck, UserPlus, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 
 const App: React.FC = () => {

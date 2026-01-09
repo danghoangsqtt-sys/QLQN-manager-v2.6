@@ -1,4 +1,3 @@
-
 export enum AppMode {
   LOGIN = 'LOGIN',
   COMMANDER = 'COMMANDER',
@@ -87,9 +86,12 @@ export interface MilitaryPersonnel {
   dan_toc: string;
   ton_giao: string;
   anh_dai_dien: string;
+  
   nhap_ngu_ngay: string;
-  vao_dang_ngay: string;
+  vao_dang_ngay: string; // Giữ lại để tương thích ngược
+  ngay_vao_dang: string; // Đã thêm mới theo yêu cầu
   ngay_vao_doan: string;
+  
   trinh_do_van_hoa: string;
   da_tot_nghiep: boolean;
   nang_khieu_so_truong: string;
@@ -151,5 +153,7 @@ export interface MilitaryPersonnel {
   custom_data: Record<string, any>;
   y_kien_nguyen_vong: string;
   vi_pham_nuoc_ngoai: string;
+  
   createdAt: number;
+  updatedAt?: number; // Đã thêm mới theo yêu cầu
 }

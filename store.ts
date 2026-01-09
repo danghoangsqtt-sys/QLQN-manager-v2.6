@@ -1,18 +1,17 @@
 
 import { Dexie, type Table } from 'dexie';
-import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomField } from './types';
+import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomField } from './types.ts';
 
 export interface FilterCriteria {
   keyword: string;
   unitId: string;
   rank: string;
   position: string;
-  political: string;
-  security: string;
-  education: string;
-  foreignElement: string;
-  familyStatus: string;
-  marital: string;
+  political: 'all' | 'dang_vien' | 'quan_chung';
+  security: 'all' | 'vay_no' | 'vi_pham';
+  education: 'all' | 'dai_hoc_cao_dang' | 'duoi_dai_hoc';
+  marital: 'all' | 'da_vo' | 'chua_vo';
+  hasChildren: 'all' | 'co_con' | 'chua_con';
 }
 
 declare global {
@@ -87,8 +86,7 @@ class Store {
       collection = collection.filter(p => 
         p.ho_ten.toLowerCase().includes(k) || 
         p.cccd.includes(k) || 
-        p.sdt_rieng?.includes(k) ||
-        p.ho_khau_thu_tru?.toLowerCase().includes(k)
+        p.sdt_rieng?.includes(k)
       );
     }
 
@@ -101,16 +99,41 @@ class Store {
       collection = collection.filter(p => p.cap_bac === filters.rank);
     }
 
+    // Logic Lọc Chính Trị
     if (filters.political === 'dang_vien') {
       collection = collection.filter(p => !!p.vao_dang_ngay);
     } else if (filters.political === 'quan_chung') {
       collection = collection.filter(p => !p.vao_dang_ngay);
     }
 
+    // Logic Lọc An Ninh/Tài Chính
     if (filters.security === 'vay_no') {
       collection = collection.filter(p => !!p.tai_chinh_suc_khoe?.vay_no?.co_khong);
     } else if (filters.security === 'vi_pham') {
-      collection = collection.filter(p => !!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong);
+      collection = collection.filter(p => 
+        !!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong || 
+        !!p.lich_su_vi_pham?.danh_bac?.co_khong || 
+        !!p.lich_su_vi_pham?.ma_tuy?.co_khong
+      );
+    }
+
+    // Logic Lọc Trình độ
+    if (filters.education === 'dai_hoc_cao_dang') {
+      collection = collection.filter(p => {
+        const edu = (p.trinh_do_van_hoa || '').toLowerCase();
+        return edu.includes('đại học') || edu.includes('cao đẳng') || edu.includes('thạc sĩ');
+      });
+    }
+
+    // Logic Lọc Gia đình
+    if (filters.marital === 'da_vo') {
+      collection = collection.filter(p => !!p.quan_he_gia_dinh?.vo);
+    } else if (filters.marital === 'chua_vo') {
+      collection = collection.filter(p => !p.quan_he_gia_dinh?.vo);
+    }
+
+    if (filters.hasChildren === 'co_con') {
+      collection = collection.filter(p => (p.quan_he_gia_dinh?.con?.length || 0) > 0);
     }
 
     return collection.reverse().sortBy('createdAt');
@@ -118,15 +141,27 @@ class Store {
 
   async getDashboardStats() {
     const all = await dbInstance.personnel.toArray();
+    const now = new Date();
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(now.getMonth() - 3);
+
     const stats = {
       total: all.length,
       party: all.filter(p => !!p.vao_dang_ngay).length,
+      mass: all.filter(p => !p.vao_dang_ngay).length,
       debt: all.filter(p => !!p.tai_chinh_suc_khoe?.vay_no?.co_khong).length,
+      newRecruits: all.filter(p => {
+        if (!p.nhap_ngu_ngay) return false;
+        const enlistDate = new Date(p.nhap_ngu_ngay);
+        return enlistDate >= threeMonthsAgo;
+      }).length,
       ranks: {} as Record<string, number>
     };
+
     all.forEach(p => {
       stats.ranks[p.cap_bac] = (stats.ranks[p.cap_bac] || 0) + 1;
     });
+
     return stats;
   }
 
@@ -154,40 +189,9 @@ class Store {
     return dbInstance.units.add({ id: Date.now().toString(), name, parentId });
   }
 
-async deleteUnit(id: string) {
-    try {
-      // 1. Lấy toàn bộ ID của đơn vị này và các đơn vị con cháu (Đệ quy)
-      // Hàm getAllChildUnitIds trả về mảng gồm [id, childId1, childId2, ...]
-      const idsToDelete = await this.getAllChildUnitIds(id);
-
-      // 2. Thực hiện Transaction để đảm bảo tính nhất quán dữ liệu
-      // Chế độ 'rw' (read-write) trên 2 bảng: units và personnel
-      await dbInstance.transaction('rw', dbInstance.units, dbInstance.personnel, async () => {
-        
-        // Bước A: Xóa toàn bộ các đơn vị trong danh sách
-        await dbInstance.units.bulkDelete(idsToDelete);
-
-        // Bước B: Tìm và cập nhật các quân nhân thuộc các đơn vị bị xóa
-        // Sử dụng where(...).anyOf(...) để truy vấn nhanh theo Index
-        const affectedPersonnel = await dbInstance.personnel
-          .where('don_vi_id')
-          .anyOf(idsToDelete)
-          .modify({ 
-            don_vi_id: '',            // Reset về rỗng (hoặc '1' nếu muốn về Ban Chỉ Huy)
-            don_vi: 'Chưa phân loại'  // Cập nhật tên hiển thị để người dùng nhận biết
-          });
-
-        console.log(`Đã xóa ${idsToDelete.length} đơn vị. Cập nhật ${affectedPersonnel} hồ sơ quân nhân.`);
-      });
-
-      this.log('WARN', `Đã xóa cấu trúc đơn vị ID: ${id} và cập nhật dữ liệu liên quan.`);
-      return true;
-
-    } catch (error) {
-      this.log('ERROR', `Lỗi khi xóa đơn vị ID ${id}: ${error}`);
-      console.error("Failed to delete unit recursively:", error);
-      return false;
-    }
+  async deleteUnit(id: string) {
+    await dbInstance.units.delete(id);
+    return true;
   }
 
   async getSetting(key: string): Promise<any> {
@@ -210,7 +214,6 @@ async deleteUnit(id: string) {
     await this.saveSetting('app_shortcuts', updated);
   }
 
-  // Fix: Added resetShortcuts method to resolve error in components/Settings.tsx
   async resetShortcuts(): Promise<void> {
     await this.saveSetting('app_shortcuts', DEFAULT_SHORTCUTS);
   }
@@ -233,7 +236,6 @@ async deleteUnit(id: string) {
     await this.initDefaults();
   }
 
-  // Fix: Added clearLogs method to resolve error in components/DebugPanel.tsx
   async clearLogs(): Promise<void> {
     await dbInstance.logs.clear();
   }

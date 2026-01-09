@@ -66,7 +66,7 @@ function createWindow() {
   // Cấu hình CSP (Đã sửa để chạy được Dev mode)
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const devCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: http: https:;";
-    const prodCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file: https://cdn.tailwindcss.com https://fonts.googleapis.com https://fonts.gstatic.com https://esm.sh;";
+    const prodCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file: https://fonts.googleapis.com https://fonts.gstatic.com;";
 
     callback({
       responseHeaders: {

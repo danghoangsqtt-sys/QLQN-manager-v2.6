@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import Dashboard from './components/Dashboard.tsx';
-import PersonnelForm from './components/PersonnelForm.tsx';
-import { db } from './store.ts';
-import { Unit, AppMode } from './types.ts';
+import Dashboard from './components/Dashboard';
+import PersonnelForm from './components/PersonnelForm';
+import { db } from './store';
+import { Unit, AppMode } from './types';
 import { Lock, ShieldCheck, UserPlus, ArrowLeft, Eye, EyeOff } from 'lucide-react';
-
+import './index.css';
 const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>(AppMode.LOGIN);
   const [password, setPassword] = useState('');

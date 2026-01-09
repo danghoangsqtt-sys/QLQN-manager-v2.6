@@ -1,6 +1,6 @@
 
 import { Dexie, type Table } from 'dexie';
-import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomField } from './types.ts';
+import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomField } from './types';
 
 export interface FilterCriteria {
   keyword: string;
@@ -154,9 +154,40 @@ class Store {
     return dbInstance.units.add({ id: Date.now().toString(), name, parentId });
   }
 
-  async deleteUnit(id: string) {
-    await dbInstance.units.delete(id);
-    return true;
+async deleteUnit(id: string) {
+    try {
+      // 1. Lấy toàn bộ ID của đơn vị này và các đơn vị con cháu (Đệ quy)
+      // Hàm getAllChildUnitIds trả về mảng gồm [id, childId1, childId2, ...]
+      const idsToDelete = await this.getAllChildUnitIds(id);
+
+      // 2. Thực hiện Transaction để đảm bảo tính nhất quán dữ liệu
+      // Chế độ 'rw' (read-write) trên 2 bảng: units và personnel
+      await dbInstance.transaction('rw', dbInstance.units, dbInstance.personnel, async () => {
+        
+        // Bước A: Xóa toàn bộ các đơn vị trong danh sách
+        await dbInstance.units.bulkDelete(idsToDelete);
+
+        // Bước B: Tìm và cập nhật các quân nhân thuộc các đơn vị bị xóa
+        // Sử dụng where(...).anyOf(...) để truy vấn nhanh theo Index
+        const affectedPersonnel = await dbInstance.personnel
+          .where('don_vi_id')
+          .anyOf(idsToDelete)
+          .modify({ 
+            don_vi_id: '',            // Reset về rỗng (hoặc '1' nếu muốn về Ban Chỉ Huy)
+            don_vi: 'Chưa phân loại'  // Cập nhật tên hiển thị để người dùng nhận biết
+          });
+
+        console.log(`Đã xóa ${idsToDelete.length} đơn vị. Cập nhật ${affectedPersonnel} hồ sơ quân nhân.`);
+      });
+
+      this.log('WARN', `Đã xóa cấu trúc đơn vị ID: ${id} và cập nhật dữ liệu liên quan.`);
+      return true;
+
+    } catch (error) {
+      this.log('ERROR', `Lỗi khi xóa đơn vị ID ${id}: ${error}`);
+      console.error("Failed to delete unit recursively:", error);
+      return false;
+    }
   }
 
   async getSetting(key: string): Promise<any> {

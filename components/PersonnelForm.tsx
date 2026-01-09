@@ -17,7 +17,7 @@ const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
   nhap_ngu_ngay: '', ngay_vao_doan: '', vao_dang_ngay: '',
   ho_khau_thu_tru: '', noi_sinh: '', dan_toc: 'Kinh', ton_giao: 'Không',
   trinh_do_van_hoa: '12/12', da_tot_nghiep: false, nang_khieu_so_truong: '',
-  anh_dai_dien: '', // Trường chứa Base64 ảnh
+  anh_dai_dien: '', // Trường này giờ có thể chứa string (Base64 cũ) hoặc Blob (Mới)
   // --- NEW UPDATE: Thêm thông tin nghỉ phép ---
   nghi_phep_thuc_te: 0,
   nghi_phep_tham_chieu: 12,
@@ -67,17 +67,19 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   // Ref để điều khiển input file ẩn
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Khởi tạo state
+  // OPTIMIZATION: Dùng structuredClone thay cho JSON.parse(JSON.stringify())
+  // JSON.stringify sẽ làm hỏng dữ liệu Blob/File, structuredClone hỗ trợ deep copy Blob hoàn hảo.
   const [formData, setFormData] = useState<Partial<MilitaryPersonnel>>(
-    initialData ? JSON.parse(JSON.stringify(initialData)) : JSON.parse(JSON.stringify(DEFAULT_DATA))
+    initialData ? structuredClone(initialData) : structuredClone(DEFAULT_DATA)
   );
 
   // FIX CRITICAL BUG: Đồng bộ State khi Props initialData thay đổi
   useEffect(() => {
     if (initialData) {
-      setFormData(JSON.parse(JSON.stringify(initialData)));
+      // OPTIMIZATION: Dùng structuredClone để bảo toàn dữ liệu Blob nếu đang sửa hồ sơ
+      setFormData(structuredClone(initialData));
     } else {
-      setFormData(JSON.parse(JSON.stringify(DEFAULT_DATA)));
+      setFormData(structuredClone(DEFAULT_DATA));
     }
   }, [initialData]);
 
@@ -88,25 +90,32 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
     }
   }, [formData.don_vi_id]);
 
-  // --- HÀM XỬ LÝ UPLOAD ẢNH (MỚI) ---
+  // --- HÀM XỬ LÝ UPLOAD ẢNH (OPTIMIZED - BLOB) ---
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Kiểm tra kích thước file (ví dụ: giới hạn 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert("File ảnh quá lớn (Tối đa 5MB)");
+      // Kiểm tra kích thước file (ví dụ: giới hạn 10MB cho thoải mái vì lưu Blob rất nhẹ)
+      if (file.size > 10 * 1024 * 1024) {
+        alert("File ảnh quá lớn (Tối đa 10MB)");
         return;
       }
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        // Lưu chuỗi Base64 vào state
-        setFormData(prev => ({ ...prev, anh_dai_dien: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+      // OPTIMIZATION: Không dùng FileReader (Base64) nữa.
+      // Lưu trực tiếp File object (Blob) vào state. Dexie DB hỗ trợ lưu Blob.
+      // Ép kiểu 'any' ở đây để tránh lỗi TS nếu types.ts định nghĩa anh_dai_dien là string.
+      setFormData(prev => ({ ...prev, anh_dai_dien: file as any }));
     }
   };
   // -----------------------------------
+
+  // Helper function: Lấy URL hiển thị ảnh (Hỗ trợ cả Blob và Base64 cũ)
+  const getAvatarSrc = (source: any) => {
+    if (!source) return null;
+    if (source instanceof Blob || source instanceof File) {
+      return URL.createObjectURL(source);
+    }
+    return source as string; // Base64 cũ hoặc URL string
+  };
 
   const handleSave = () => {
     // Validation cơ bản
@@ -141,9 +150,10 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   };
 
   // Helper function: Update nested object properties safely
+  // Cần dùng structuredClone ở đây để tránh mất Blob khi update nested
   const updateNested = (path: string, value: any) => {
     setFormData(prev => {
-      const updated = JSON.parse(JSON.stringify(prev));
+      const updated = structuredClone(prev); // Use structuredClone instead of JSON parse/stringify
       const keys = path.split('.');
       let current: any = updated;
       for (let i = 0; i < keys.length - 1; i++) {
@@ -159,7 +169,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   // Helper functions for Arrays
   const addRow = (path: string, template: any) => {
     setFormData(prev => {
-        const updated = JSON.parse(JSON.stringify(prev));
+        const updated = structuredClone(prev);
         const keys = path.split('.');
         let current: any = updated;
         for (const k of keys) {
@@ -175,7 +185,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
 
   const removeRow = (path: string, index: number) => {
     setFormData(prev => {
-        const updated = JSON.parse(JSON.stringify(prev));
+        const updated = structuredClone(prev);
         const keys = path.split('.');
         let current: any = updated;
         for (let i = 0; i < keys.length; i++) {
@@ -231,10 +241,19 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
               <div className="grid grid-cols-12 gap-6">
                 <div className="col-span-12 md:col-span-2 flex flex-col items-center">
                   
-                  {/* --- KHU VỰC HIỂN THỊ ẢNH --- */}
+                  {/* --- KHU VỰC HIỂN THỊ ẢNH (OPTIMIZED) --- */}
                   <div className="w-32 h-44 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-50 mb-3 relative overflow-hidden group">
                     {formData.anh_dai_dien ? (
-                        <img src={formData.anh_dai_dien} className="w-full h-full object-cover" alt="Avatar" />
+                        <img 
+                          src={getAvatarSrc(formData.anh_dai_dien) || ''} 
+                          className="w-full h-full object-cover" 
+                          alt="Avatar" 
+                          // Revoke URL để tránh leak memory khi ảnh load xong (chỉ áp dụng với Blob)
+                          onLoad={(e) => {
+                            const src = (e.target as HTMLImageElement).src;
+                            if (src.startsWith('blob:')) URL.revokeObjectURL(src);
+                          }}
+                        />
                     ) : (
                         <span className="text-gray-400 text-[10px] font-bold">Ảnh thẻ</span>
                     )}

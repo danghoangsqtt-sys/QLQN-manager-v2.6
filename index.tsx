@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
-
+import './index.css';
 const RootComponent = () => {
   useEffect(() => {
     // Ẩn màn hình loading khi component mount

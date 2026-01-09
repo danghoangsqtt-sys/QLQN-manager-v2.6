@@ -159,7 +159,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex font-sans text-slate-800">
+    <div className="h-screen bg-[#F8FAFC] flex font-sans text-slate-800 overflow-hidden">
       {/* Sidebar */}
       <div className="w-64 bg-[#14452F] flex flex-col shadow-2xl shrink-0">
         <div className="p-8 text-center border-b border-white/5">
@@ -170,7 +170,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           <p className="text-green-400 text-[8px] font-black uppercase mt-1.5 tracking-[0.2em]">Hệ thống nội bộ</p>
         </div>
         
-        <nav className="flex-1 px-4 py-6 space-y-1">
+        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto scrollbar-hide">
           <button onClick={() => setActiveTab('personnel')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${activeTab === 'personnel' ? 'bg-white text-[#14452F] shadow-lg' : 'text-white/40 hover:bg-white/5'}`}>
             <Users size={16} /> Danh sách hồ sơ
           </button>
@@ -189,9 +189,9 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Header - Compact */}
-        <header className="bg-white border-b px-8 py-4">
+        <header className="bg-white border-b px-8 py-4 shrink-0">
           <div className="flex items-center justify-between gap-6">
             <div className="relative flex-1 max-w-xl">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -278,7 +278,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         </header>
 
         {/* Content Area - Compact Cards */}
-        <main className="flex-1 overflow-y-auto p-8">
+        <main className="flex-1 overflow-y-auto p-8 min-h-0">
           {activeTab === 'personnel' && (
             <div className="space-y-3">
               <div className="flex justify-between items-center mb-2 px-2">

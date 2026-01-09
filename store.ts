@@ -1,4 +1,3 @@
-
 import { Dexie, type Table } from 'dexie';
 import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomField } from './types.ts';
 
@@ -21,19 +20,38 @@ declare global {
   }
 }
 
-const dbInstance = new Dexie('QNManagerDB_v2') as Dexie & {
-  personnel: Table<MilitaryPersonnel>;
-  units: Table<Unit>;
-  settings: Table<{ key: string; value: any }>;
-  logs: Table<LogEntry>;
-};
+// Mở rộng lớp Dexie để bao gồm bảng custom_fields
+class QNManagerDB extends Dexie {
+  personnel!: Table<MilitaryPersonnel>;
+  units!: Table<Unit>;
+  settings!: Table<{ key: string; value: any }>;
+  logs!: Table<LogEntry>;
+  custom_fields!: Table<CustomField>; // Thêm bảng mới
 
-dbInstance.version(1).stores({
-  personnel: 'id, ho_ten, cccd, don_vi_id, cap_bac, chuc_vu, createdAt, vao_dang_ngay, trinh_do_van_hoa',
-  units: 'id, name, parentId',
-  settings: 'key',
-  logs: 'id, timestamp, level'
-});
+  constructor() {
+    super('QNManagerDB_v2');
+    
+    // Version 1: Schema cũ
+    this.version(1).stores({
+      personnel: 'id, ho_ten, cccd, don_vi_id, cap_bac, chuc_vu, createdAt, vao_dang_ngay, trinh_do_van_hoa',
+      units: 'id, name, parentId',
+      settings: 'key',
+      logs: 'id, timestamp, level'
+    });
+
+    // Version 2: Bổ sung custom_fields và giữ nguyên các bảng cũ
+    // Dexie sẽ tự động giữ dữ liệu cũ khi upgrade
+    this.version(2).stores({
+      personnel: 'id, ho_ten, cccd, don_vi_id, cap_bac, chuc_vu, createdAt, vao_dang_ngay, trinh_do_van_hoa',
+      units: 'id, name, parentId',
+      settings: 'key',
+      logs: 'id, timestamp, level',
+      custom_fields: 'id, unit_id' 
+    });
+  }
+}
+
+const dbInstance = new QNManagerDB();
 
 const DEFAULT_SHORTCUTS: ShortcutConfig[] = [
   { id: 'add_person', label: 'Thêm chiến sĩ mới', key: 'n', altKey: false, ctrlKey: true, shiftKey: false },
@@ -60,9 +78,14 @@ class Store {
   }
 
   async login(password: string): Promise<boolean> {
-    const res = window.electronAPI ? await window.electronAPI.login(password) : password === '123456';
-    if (res) this.log('INFO', 'Người dùng đăng nhập thành công.');
-    return res;
+    // Kiểm tra an toàn cho window.electronAPI
+    if (typeof window !== 'undefined' && window.electronAPI) {
+        const res = await window.electronAPI.login(password);
+        if (res) this.log('INFO', 'Người dùng đăng nhập thành công.');
+        return res;
+    }
+    // Fallback cho môi trường Web Dev
+    return password === '123456';
   }
 
   async changePassword(newPassword: string): Promise<boolean> {
@@ -80,63 +103,80 @@ class Store {
     return ids;
   }
 
+  // --- QUAN TRỌNG: Đã tối ưu hóa hàm này ---
   async getPersonnel(filters: Partial<FilterCriteria> = {}): Promise<MilitaryPersonnel[]> {
-    let collection = dbInstance.personnel.toCollection();
+    let collection: any; // Sử dụng type any tạm thời để linh hoạt giữa Collection và Table
 
+    // 1. TỐI ƯU QUERY DATABASE: Lọc theo đơn vị trước bằng Index
+    if (filters.unitId && filters.unitId !== 'all') {
+      const allTargetIds = await this.getAllChildUnitIds(filters.unitId);
+      // Sử dụng 'anyOf' để tận dụng index 'don_vi_id' trong Dexie -> Nhanh hơn nhiều
+      collection = dbInstance.personnel.where('don_vi_id').anyOf(allTargetIds);
+    } else {
+      collection = dbInstance.personnel.toCollection();
+    }
+
+    // 2. LỌC BẰNG JS CHO CÁC TIÊU CHÍ PHỨC TẠP
+    // Dexie Filter hoạt động Lazy, chỉ duyệt qua các record thỏa mãn điều kiện (1)
+    
+    // Lọc theo từ khóa (Tìm tên, CCCD, SĐT, HKTT)
     if (filters.keyword) {
       const k = filters.keyword.toLowerCase();
-      collection = collection.filter(p => 
+      collection = collection.filter((p: MilitaryPersonnel) => 
         p.ho_ten.toLowerCase().includes(k) || 
         p.cccd.includes(k) || 
-        p.sdt_rieng?.includes(k) ||
-        p.ho_khau_thu_tru?.toLowerCase().includes(k)
+        (p.sdt_rieng && p.sdt_rieng.includes(k)) ||
+        (p.ho_khau_thu_tru && p.ho_khau_thu_tru.toLowerCase().includes(k))
       );
     }
 
-    // Nâng cấp: Lọc đệ quy toàn bộ đơn vị con
-    if (filters.unitId && filters.unitId !== 'all') {
-      const allTargetIds = await this.getAllChildUnitIds(filters.unitId);
-      collection = collection.filter(p => allTargetIds.includes(p.don_vi_id));
-    }
-
     if (filters.rank && filters.rank !== 'all') {
-      collection = collection.filter(p => p.cap_bac === filters.rank);
+      collection = collection.filter((p: MilitaryPersonnel) => p.cap_bac === filters.rank);
     }
 
     if (filters.position && filters.position !== 'all') {
-      collection = collection.filter(p => p.chuc_vu === filters.position);
+      collection = collection.filter((p: MilitaryPersonnel) => p.chuc_vu === filters.position);
     }
 
+    // Lọc Đảng viên
     if (filters.political === 'dang_vien') {
-      collection = collection.filter(p => !!p.vao_dang_ngay);
+      collection = collection.filter((p: MilitaryPersonnel) => !!p.vao_dang_ngay);
     } else if (filters.political === 'quan_chung') {
-      collection = collection.filter(p => !p.vao_dang_ngay);
+      collection = collection.filter((p: MilitaryPersonnel) => !p.vao_dang_ngay);
     }
 
-    if (filters.security === 'vay_no') {
-      collection = collection.filter(p => !!p.tai_chinh_suc_khoe?.vay_no?.co_khong);
-    } else if (filters.security === 'vi_pham') {
-      collection = collection.filter(p => !!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong);
-    } else if (filters.security === 'ma_tuy') {
-      collection = collection.filter(p => !!p.lich_su_vi_pham?.ma_tuy?.co_khong);
+    // Lọc An ninh / Kỷ luật (Dữ liệu lồng nhau)
+    if (filters.security) {
+        if (filters.security === 'vay_no') {
+            collection = collection.filter((p: MilitaryPersonnel) => !!p.tai_chinh_suc_khoe?.vay_no?.co_khong);
+        } else if (filters.security === 'vi_pham') {
+            collection = collection.filter((p: MilitaryPersonnel) => !!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong);
+        } else if (filters.security === 'ma_tuy') {
+            collection = collection.filter((p: MilitaryPersonnel) => !!p.lich_su_vi_pham?.ma_tuy?.co_khong);
+        }
     }
 
     if (filters.education && filters.education !== 'all') {
-      collection = collection.filter(p => p.trinh_do_van_hoa === filters.education);
+      collection = collection.filter((p: MilitaryPersonnel) => p.trinh_do_van_hoa === filters.education);
     }
 
-    if (filters.marital === 'da_ket_hon') {
-      collection = collection.filter(p => !!p.quan_he_gia_dinh?.vo);
-    } else if (filters.marital === 'doc_than') {
-      collection = collection.filter(p => !p.quan_he_gia_dinh?.vo);
+    if (filters.marital) {
+        if (filters.marital === 'da_ket_hon') {
+            collection = collection.filter((p: MilitaryPersonnel) => !!p.quan_he_gia_dinh?.vo);
+        } else if (filters.marital === 'doc_than') {
+            collection = collection.filter((p: MilitaryPersonnel) => !p.quan_he_gia_dinh?.vo);
+        }
     }
 
-    if (filters.foreignElement === 'has_relatives') {
-      collection = collection.filter(p => (p.yeu_to_nuoc_ngoai?.than_nhan?.length || 0) > 0);
-    } else if (filters.foreignElement === 'has_passport') {
-      collection = collection.filter(p => !!p.yeu_to_nuoc_ngoai?.ho_chieu?.da_co);
+    if (filters.foreignElement) {
+        if (filters.foreignElement === 'has_relatives') {
+            collection = collection.filter((p: MilitaryPersonnel) => (p.yeu_to_nuoc_ngoai?.than_nhan?.length || 0) > 0);
+        } else if (filters.foreignElement === 'has_passport') {
+            collection = collection.filter((p: MilitaryPersonnel) => !!p.yeu_to_nuoc_ngoai?.ho_chieu?.da_co);
+        }
     }
 
+    // Sắp xếp và trả về kết quả
     return collection.reverse().sortBy('createdAt');
   }
 
@@ -167,8 +207,10 @@ class Store {
   async deleteUnit(id: string) {
     const childIds = (await dbInstance.units.where('parentId').equals(id).toArray()).map(u => u.id);
     await dbInstance.units.delete(id);
-    // Đồng thời xóa các bản ghi nhân sự thuộc đơn vị này (tùy chọn) hoặc để quân nhân "không đơn vị"
+    // Đệ quy xóa đơn vị con
     for (const cid of childIds) await this.deleteUnit(cid);
+    
+    // Tùy chọn: Xóa quân nhân thuộc đơn vị này hoặc để họ mồ côi (ở đây giữ nguyên logic cũ là không xóa quân nhân)
     return true;
   }
 
@@ -199,11 +241,12 @@ class Store {
   async getSystemStats(): Promise<any> {
     const pCount = await dbInstance.personnel.count();
     const uCount = await dbInstance.units.count();
+    // Ước tính dung lượng đơn giản
     return {
       personnelCount: pCount,
       unitCount: uCount,
-      status: 'Dexie Engine Online',
-      storageUsage: `${(pCount * 0.8 / 1024).toFixed(2)} MB (Ước tính)`
+      status: 'Dexie Engine Online (v2)',
+      storageUsage: `${(pCount * 0.05).toFixed(2)} MB (Ước tính)` // Đã điều chỉnh công thức ước tính
     };
   }
 
@@ -212,6 +255,7 @@ class Store {
     await dbInstance.personnel.clear();
     await dbInstance.units.clear();
     await dbInstance.logs.clear();
+    await dbInstance.custom_fields.clear(); // Xóa bảng custom_fields
     await this.initDefaults();
   }
 
@@ -236,10 +280,23 @@ class Store {
 
   runDiagnostics() {
     this.log('SYSTEM', 'Đang chạy kiểm tra toàn vẹn dữ liệu...');
+    // Có thể thêm logic kiểm tra orphan records tại đây
   }
 
-  getCustomFields(unitId: string): CustomField[] {
-    return []; 
+  // --- MỚI: Implement hàm lấy Custom Fields ---
+  async getCustomFields(unitId: string): Promise<CustomField[]> {
+    if (!unitId) return [];
+    // Lấy các trường tùy chỉnh cho đơn vị này
+    return dbInstance.custom_fields.where('unit_id').equals(unitId).toArray();
+  }
+  
+  // --- MỚI: Hàm hỗ trợ thêm Custom Field (Để sử dụng sau này) ---
+  async addCustomField(field: CustomField): Promise<void> {
+      await dbInstance.custom_fields.add(field);
+  }
+  
+  async deleteCustomField(id: string): Promise<void> {
+      await dbInstance.custom_fields.delete(id);
   }
 }
 

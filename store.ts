@@ -99,14 +99,12 @@ class Store {
       collection = collection.filter(p => p.cap_bac === filters.rank);
     }
 
-    // Logic Lọc Chính Trị
     if (filters.political === 'dang_vien') {
       collection = collection.filter(p => !!p.vao_dang_ngay);
     } else if (filters.political === 'quan_chung') {
       collection = collection.filter(p => !p.vao_dang_ngay);
     }
 
-    // Logic Lọc An Ninh/Tài Chính
     if (filters.security === 'vay_no') {
       collection = collection.filter(p => !!p.tai_chinh_suc_khoe?.vay_no?.co_khong);
     } else if (filters.security === 'vi_pham') {
@@ -117,7 +115,6 @@ class Store {
       );
     }
 
-    // Logic Lọc Trình độ
     if (filters.education === 'dai_hoc_cao_dang') {
       collection = collection.filter(p => {
         const edu = (p.trinh_do_van_hoa || '').toLowerCase();
@@ -125,15 +122,10 @@ class Store {
       });
     }
 
-    // Logic Lọc Gia đình
     if (filters.marital === 'da_vo') {
       collection = collection.filter(p => !!p.quan_he_gia_dinh?.vo);
     } else if (filters.marital === 'chua_vo') {
       collection = collection.filter(p => !p.quan_he_gia_dinh?.vo);
-    }
-
-    if (filters.hasChildren === 'co_con') {
-      collection = collection.filter(p => (p.quan_he_gia_dinh?.con?.length || 0) > 0);
     }
 
     return collection.reverse().sortBy('createdAt');
@@ -141,19 +133,19 @@ class Store {
 
   async getDashboardStats() {
     const all = await dbInstance.personnel.toArray();
-    const now = new Date();
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(now.getMonth() - 3);
-
     const stats = {
       total: all.length,
       party: all.filter(p => !!p.vao_dang_ngay).length,
-      mass: all.filter(p => !p.vao_dang_ngay).length,
+      leave: all.filter(p => (p.nghi_phep_thuc_te || 0) > 0).length,
       debt: all.filter(p => !!p.tai_chinh_suc_khoe?.vay_no?.co_khong).length,
-      newRecruits: all.filter(p => {
-        if (!p.nhap_ngu_ngay) return false;
-        const enlistDate = new Date(p.nhap_ngu_ngay);
-        return enlistDate >= threeMonthsAgo;
+      violation: all.filter(p => 
+        !!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong || 
+        !!p.lich_su_vi_pham?.danh_bac?.co_khong || 
+        !!p.lich_su_vi_pham?.ma_tuy?.co_khong
+      ).length,
+      educationHigh: all.filter(p => {
+        const edu = (p.trinh_do_van_hoa || '').toLowerCase();
+        return edu.includes('đại học') || edu.includes('cao đẳng') || edu.includes('thạc sĩ');
       }).length,
       ranks: {} as Record<string, number>
     };

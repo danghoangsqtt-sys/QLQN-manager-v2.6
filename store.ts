@@ -1,6 +1,6 @@
 
 import { Dexie, type Table } from 'dexie';
-import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomField } from './types.ts';
+import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomField } from './types';
 
 export interface FilterCriteria {
   keyword: string;

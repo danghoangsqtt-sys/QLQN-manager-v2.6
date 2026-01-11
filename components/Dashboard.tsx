@@ -105,12 +105,22 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     try {
         const fullData = await db.getPersonnelById(person.id);
         if (fullData) {
+            // Lưu lại tiêu đề cũ
+            const originalTitle = document.title;
+            // Đặt tiêu đề mới (sẽ trở thành tên file khi lưu PDF)
+            const cleanName = person.ho_ten.trim().replace(/\s+/g, '_');
+            document.title = `Ho_so_${cleanName}_${person.cccd}`;
+
             addToast(`Đang chuẩn bị bản in cho ${person.ho_ten.split(' ').pop()}...`, "info");
             setPrintingPerson(fullData);
+
+            // Đợi một khoảng thời gian ngắn để template kịp render vào DOM
             setTimeout(() => {
               window.print();
+              // Sau khi in xong (hoặc đóng hộp thoại in), khôi phục lại trạng thái và tiêu đề
               setPrintingPerson(undefined);
-            }, 600);
+              document.title = originalTitle;
+            }, 800);
         }
     } catch (error) {
         addToast("Lỗi khi chuẩn bị in hồ sơ", "error");
@@ -208,6 +218,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   return (
     <div className="h-screen bg-[#F0F2F5] flex font-sans text-slate-800 overflow-hidden relative text-sm">
       
+      {/* Container in ấn - Nằm ngoài cấu trúc layout chính */}
       <ProfilePrintTemplate data={printingPerson} />
 
       {/* TOAST NOTIFICATIONS */}

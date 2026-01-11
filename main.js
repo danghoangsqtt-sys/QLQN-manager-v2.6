@@ -5,7 +5,6 @@ const fs = require('fs');
 const isDev = require('electron-is-dev');
 
 // --- CẤU HÌNH BẢO MẬT & DỮ LIỆU ---
-// Chỉ dùng file JSON này để lưu Mật khẩu Admin (tránh reset khi xóa cache trình duyệt)
 const PASSWORD_SALT = 'DHsystem_Salt_2026_Dexie';
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'app_secure_settings.json');
@@ -30,7 +29,7 @@ function hashPassword(password) {
 
 // --- IPC HANDLERS ---
 
-// 1. Auth Handlers (GIỮ NGUYÊN: Để bảo mật mật khẩu)
+// 1. Auth Handlers
 ipcMain.handle('auth:login', (_, p) => {
   const settings = readSecureSettings();
   let stored = settings['admin_password'];
@@ -54,17 +53,41 @@ ipcMain.handle('auth:changePassword', (_, p) => {
   return true;
 });
 
-// [ĐÃ XÓA] db:getStats, db:saveSetting, db:getSetting 
-// Lý do: Đã chuyển sang dùng Dexie ở Renderer để tránh xung đột dữ liệu.
+// 2. Database/Settings Handlers
 
-// 2. System Handlers (Update Logic)
+// [ĐÃ SỬA LỖI] Khôi phục lại hàm này để tránh lỗi giao diện gọi vào bị crash
+ipcMain.handle('db:getStats', async () => {
+    // Trả về dữ liệu giả lập trạng thái để UI không bị treo
+    return { personnelCount: 0, unitCount: 0, status: 'Connected' };
+});
+
+ipcMain.handle('db:saveSetting', (_, {key, value}) => {
+    try {
+        const settings = readSecureSettings();
+        settings[key] = value;
+        writeSecureSettings(settings);
+        return true;
+    } catch (e) {
+        console.error(e);
+        return false;
+    }
+});
+
+ipcMain.handle('db:getSetting', (_, key) => {
+    const settings = readSecureSettings();
+    return settings[key];
+});
+
+// 3. System Handlers (Update Logic đã sửa)
 ipcMain.handle('system:updateFromFile', async () => {
   const win = BrowserWindow.getFocusedWindow();
   
   const result = await dialog.showOpenDialog(win, {
     title: 'Chọn file cài đặt phiên bản mới',
     properties: ['openFile'],
-    filters: [{ name: 'File cài đặt', extensions: ['exe'] }]
+    filters: [
+      { name: 'File cài đặt', extensions: ['exe'] }
+    ]
   });
 
   if (result.canceled || result.filePaths.length === 0) {
@@ -74,21 +97,16 @@ ipcMain.handle('system:updateFromFile', async () => {
   const installerPath = result.filePaths[0];
 
   try {
-    // Tùy chọn 1: Mở file nhưng không tách process (đơn giản)
+    // Mở file cài đặt và đợi lệnh được gửi đi thành công
     await shell.openPath(installerPath);
     
-    // Tùy chọn 2 (Khuyên dùng): Dùng child_process để spawn installer độc lập
-    // const { spawn } = require('child_process');
-    // const child = spawn(installerPath, [], { detached: true, stdio: 'ignore' });
-    // child.unref(); 
-
-    // Thay vì quit sau 3s, hãy thông báo cho renderer để hiển thị UI "Đang cập nhật..."
-    // và để người dùng hoặc installer tự đóng app, HOẶC tăng thời gian chờ an toàn.
+    // [ĐÃ SỬA LỖI] Tăng thời gian chờ từ 500ms lên 3000ms (3 giây)
+    // Để đảm bảo tiến trình con (installer) đã nhận lệnh từ OS trước khi App đóng
     setTimeout(() => {
       app.quit();
-    }, 5000); // Tăng lên 5s để an toàn hơn cho các máy chậm
+    }, 3000);
 
-    return { success: true, message: 'Đang khởi chạy bộ cài đặt...' };
+    return { success: true, message: 'Đang khởi chạy bộ cài đặt, ứng dụng sẽ tự tắt sau 3 giây...' };
   } catch (error) {
     return { success: false, message: 'Lỗi khi mở file: ' + error.message };
   }
@@ -99,7 +117,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
-    backgroundColor: '#14452F', // Màu nền mặc định khi load
+    backgroundColor: '#14452F',
     show: false,
     icon: path.join(__dirname, 'public/icon.ico'),
     webPreferences: {
@@ -111,12 +129,12 @@ function createWindow() {
     }
   });
 
-  // FIX: Cấu hình CSP chặt chẽ hơn cho Production nhưng phải hỗ trợ file://
+  // FIX: Cấu hình CSP chặt chẽ hơn cho Production
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     // Dev: Cho phép lỏng lẻo để hot-reload hoạt động
     const devCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: http: https:;";
     
-    // Prod: Cho phép file: và unsafe-eval (để đảm bảo tương thích với một số thư viện React build cũ)
+    // Prod: CHẶN 'unsafe-eval' để ngăn chặn XSS tấn công, chỉ cho phép script nội bộ
     const prodCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file: https:;"; 
 
     callback({

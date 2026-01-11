@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MilitaryPersonnel, Unit } from '../types';
+import { MilitaryPersonnel, Unit, CustomField } from '../types';
 import { db } from '../store';
-import { Trash2, Plus, Camera, X, Calendar as CalendarIcon, Save, Upload, User, Users, ShieldAlert, GraduationCap, DollarSign, Globe, Clock, Share2, Medal, Heart, Home, Smartphone, Facebook, MessageCircle, Activity, Gavel, AlertTriangle, Phone, CheckSquare, CreditCard, TrendingUp, Cigarette, Plane, FileSignature } from 'lucide-react';
-import { createThumbnail } from '../utils/imageHelper';
+import { Trash2, Plus, Camera, X, Calendar as CalendarIcon } from 'lucide-react';
 
 interface PersonnelFormProps {
   units: Unit[];
@@ -11,1294 +10,999 @@ interface PersonnelFormProps {
   isViewMode?: boolean; 
 }
 
-// --- DỮ LIỆU MẶC ĐỊNH ĐẦY ĐỦ ---
-const DEFAULT_DATA: any = {
-  // 1. Thông tin cơ bản
+// --- DỮ LIỆU MẶC ĐỊNH ---
+const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
   ho_ten: '', ten_khac: '', ngay_sinh: '', cccd: '', sdt_rieng: '',
   cap_bac: 'Binh nhì', chuc_vu: '', don_vi_id: '',
-  nhap_ngu_ngay: '', xuat_ngu_ngay: '', 
-  ngay_vao_doan: '', vao_dang_ngay: '',
+  nhap_ngu_ngay: '', ngay_vao_doan: '', vao_dang_ngay: '',
   ho_khau_thu_tru: '', noi_sinh: '', dan_toc: 'Kinh', ton_giao: 'Không',
   trinh_do_van_hoa: '12/12', da_tot_nghiep: false, nang_khieu_so_truong: '',
   anh_dai_dien: '',
-  khen_thuong: '',
-
-  // 2. Nghỉ phép
   nghi_phep_thuc_te: 0,
   nghi_phep_tham_chieu: 12,
-
-  // 3. Tiểu sử & Xã hội
-  tieu_su_ban_than: [], 
+  tieu_su_ban_than: [{ time: '', job: '', place: '' }],
   mang_xa_hoi: { facebook: [], zalo: [], tiktok: [] },
-  hoan_canh_song: { song_chung: '', tinh_trang_nha_o: '', hoan_canh_gia_dinh: '' },
-
-  // 4. Gia đình
-  quan_he_gia_dinh: {
-    tinh_trang_hon_nhan: { da_ket_hon: false, co_ban_gai: false },
-    than_nhan: [] 
+  hoan_canh_song: { song_chung_voi: '', chi_tiet_nguoi_nuoi_duong: null, ly_do_khong_song_cung_bo_me: '' },
+  quan_he_gia_dinh: { 
+      cha_me_anh_em: [], 
+      vo: null, 
+      con: [], 
+      nguoi_yeu: [] 
   },
-
-  // 5. An ninh & Tài chính & Sức khỏe
-  tai_chinh_suc_khoe: {
-    vay_no: { 
-        co_khong: false, 
-        so_tien: '', 
-        nguoi_vay: '', 
-        nguoi_tra: '', 
-        chu_no: '', 
-        han_tra: '', 
-        hinh_thuc: '', 
-        muc_dich: '', 
-        gia_dinh_biet: false 
-    },
-    kinh_doanh_dau_tu: {
-        kinh_doanh: {
-            co_khong: false,
-            linh_vuc: '',
-            doi_tac: '',
-            so_von: ''
-        },
-        dau_tu: {
-            co_khong: false,
-            loai_hinh: '',
-            doi_tac: '',
-            thoi_gian: '',
-            so_von: '',
-            ten_cong_ty: '',
-            dia_chi_cong_ty: ''
-        }
-    },
-    thu_nhap: '', 
-    tai_san: '', 
-    tinh_hinh_suc_khoe: '',
-    phan_loai_suc_khoe: 'Loại 1', 
-    benh_man_tinh: '', 
-    nhom_mau: '', chieu_cao: '', can_nang: ''
+  thong_tin_gia_dinh_chung: { 
+      muc_song: 'Đủ ăn', 
+      nghe_nghiep_chinh: '', 
+      lich_su_vi_pham_nguoi_than: { co_khong: false, chi_tiet: '' }, 
+      lich_su_covid_gia_dinh: '' 
   },
-  lich_su_vi_pham: {
-    ky_luat_quan_doi: [], 
-    vi_pham_phap_luat: [], 
-    te_nan_xa_hoi: { 
-        ma_tuy: {
-            co_khong: false,
-            loai_chat: '',
-            thoi_gian_bat_dau: '',
-            so_lan_su_dung: '',
-            hinh_thuc_su_dung: '',
-            dia_diem_su_dung: '',
-            nguoi_cung_su_dung: '',
-            da_bi_xu_ly: false,
-            hinh_thuc_xu_ly: '',
-            chi_tiet_khac: ''
-        },
-        co_bac: {
-            co_khong: false,
-            hinh_thuc: '', 
-            thoi_gian_choi: '',
-            dia_diem_choi: '',
-            nguoi_cung_choi: '',
-            so_tien_thang_thua: '',
-            da_bi_xu_ly: false,
-            hinh_thuc_xu_ly: '',
-            chi_tiet_khac: ''
-        },
-        ruou_che: false,
-        hut_thuoc: false, 
-        ghi_chu_chung: ''
-    },
-    quan_he_xa_hoi: '', 
-    bieu_hien_tu_tuong: '' 
+  yeu_to_nuoc_ngoai: { 
+      than_nhan: [], 
+      di_nuoc_ngoai: [], 
+      ho_chieu: { da_co: false, du_dinh_nuoc: '' }, 
+      xuat_canh_dinh_cu: { dang_lam_thu_tuc: false, nuoc: '', nguoi_bao_lanh: '' } 
   },
-  yeu_to_nuoc_ngoai: {
-    than_nhan: [],
-    da_di_nuoc_ngoai: false,
-    lich_su_di_nuoc_ngoai: [],
-    dinh_cu: {
-        dang_lam_thu_tuc: false,
-        nuoc_dinh_cu: '',
-        nguoi_bao_lanh: ''
-    },
-    ho_chieu: { da_co: false, so_hieu: '', ngay_cap: '', noi_giu: '' }
+  lich_su_vi_pham: { 
+    vi_pham_dia_phuong: { co_khong: false, noi_dung: '', ket_qua: '' },
+    danh_bac: { co_khong: false, hinh_thuc: '', dia_diem: '', doi_tuong: '' },
+    ma_tuy: { co_khong: false, thoi_gian: '', loai: '', so_lan: '', doi_tuong: '', xu_ly: '', hinh_thuc_xu_ly: '' }
   },
-  // Mới bổ sung: Ý kiến & Cam đoan
-  y_kien_cam_doan: {
-      y_kien_nguyen_vong: '',
-      cam_doan: 'Tôi xin cam đoan những lời khai trên là đúng sự thật và hoàn toàn chịu trách nhiệm trước pháp luật về lời khai của mình.'
+  tai_chinh_suc_khoe: { 
+    vay_no: { co_khong: false, ai_vay: '', nguoi_dung_ten: '', so_tien: '', muc_dich: '', hinh_thuc: '', han_tra: '', gia_dinh_biet: false, nguoi_tra: '' },
+    kinh_doanh: { co_khong: false, chi_tiet: '' },
+    covid_ban_than: { da_mac: false, thoi_gian: '' }
   },
-  vi_pham_nuoc_ngoai: false
+  custom_data: {},
+  y_kien_nguyen_vong: '',
+  vi_pham_nuoc_ngoai: ''
 };
 
-// Thêm hàm helper này vào bên ngoài hoặc trong component
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-  });
+// --- HELPER FUNCTION CHO NGÀY THÁNG ---
+// Chuyển từ YYYY-MM-DD (Database) -> DD/MM/YYYY (Hiển thị)
+const toDisplayDate = (isoDate: string | undefined) => {
+  if (!isoDate) return '';
+  const [y, m, d] = isoDate.split('-');
+  if (!y || !m || !d) return isoDate;
+  return `${d}/${m}/${y}`;
 };
 
-// Sửa lại hàm handleImageUpload
-const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (file) {
-    try {
-      // BƯỚC 1: Chuyển File -> Base64
-      const base64String = await fileToBase64(file);
-      
-      // BƯỚC 2: Tạo thumbnail từ Base64
-      const thumbBase64 = await createThumbnail(base64String, 800, 0.8);
-      
-      setFormData({ ...formData, anh_dai_dien: thumbBase64, anh_thumb: thumbBase64 });
-    } catch (err) {
-      console.error("Lỗi xử lý ảnh:", err);
-    }
-  }
+// Chuyển từ DD/MM/YYYY (Nhập liệu) -> YYYY-MM-DD (Database)
+const toIsoDate = (displayDate: string) => {
+  if (!displayDate) return '';
+  const parts = displayDate.split('/');
+  if (parts.length !== 3) return '';
+  const [d, m, y] = parts;
+  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
 };
 
-const VietnamDateInput = ({ value, onChange, disabled, placeholder = "dd/mm/yyyy", className }: any) => {
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+// --- COMPONENT NHẬP NGÀY THÁNG VIỆT NAM (CUSTOM) ---
+const VietnamDateInput: React.FC<{
+  value: string | undefined;
+  onChange: (newIsoDate: string) => void;
+  disabled?: boolean;
+  className?: string;
+}> = ({ value, onChange, disabled, className }) => {
+  const [displayValue, setDisplayValue] = useState(toDisplayDate(value));
+  const hiddenDateInputRef = useRef<HTMLInputElement>(null);
+
+  // Đồng bộ khi value bên ngoài thay đổi
+  useEffect(() => {
+    setDisplayValue(toDisplayDate(value));
+  }, [value]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value;
-    if (!/^[0-9/]*$/.test(val)) return;
-    onChange(val);
+    
+    // Logic tự động thêm dấu / khi nhập số
+    // Chỉ cho phép nhập số và dấu /
+    val = val.replace(/[^0-9/]/g, '');
+    
+    // Tự động thêm / sau ngày và tháng nếu người dùng đang nhập liền mạch
+    if (val.length === 2 && !val.includes('/')) val += '/';
+    if (val.length === 5 && val.split('/').length === 2) val += '/';
+    
+    setDisplayValue(val);
+
+    // Nếu nhập đủ format dd/mm/yyyy -> Update ngược lại value gốc
+    if (val.length === 10) {
+      const iso = toIsoDate(val);
+      if (iso) onChange(iso);
+    } else if (val === '') {
+      onChange('');
+    }
+  };
+
+  const handleDateIconClick = () => {
+    if (!disabled && hiddenDateInputRef.current) {
+        hiddenDateInputRef.current.showPicker();
+    }
+  };
+
+  const handleHiddenDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const isoDate = e.target.value;
+    onChange(isoDate); // Cập nhật value gốc
+    setDisplayValue(toDisplayDate(isoDate)); // Cập nhật hiển thị
   };
 
   return (
     <div className="relative w-full">
       <input
         type="text"
-        value={value || ''}
-        onChange={handleChange}
-        placeholder={placeholder}
         disabled={disabled}
+        className={`${className} pr-10`} // Chừa chỗ cho icon
+        placeholder="dd/mm/yyyy"
         maxLength={10}
-        className={`${className} pl-9 w-full`}
+        value={displayValue}
+        onChange={handleInputChange}
+        onBlur={() => {
+           // Khi blur, nếu format đúng thì giữ, sai thì reset về value cũ
+           const iso = toIsoDate(displayValue);
+           if (!iso && displayValue !== '') {
+               setDisplayValue(toDisplayDate(value)); 
+           }
+        }}
       />
-      <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+      
+      {/* Nút icon lịch - Bấm vào sẽ mở popup chọn ngày của trình duyệt */}
+      <div 
+        onClick={handleDateIconClick}
+        className={`absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-green-600 cursor-pointer p-1 ${disabled ? 'hidden' : ''}`}
+      >
+        <CalendarIcon size={16} />
+      </div>
+
+      {/* Input date ẩn để dùng native picker của trình duyệt */}
+      <input
+        ref={hiddenDateInputRef}
+        type="date"
+        className="absolute inset-0 opacity-0 pointer-events-none w-0 h-0"
+        value={value || ''}
+        onChange={handleHiddenDateChange}
+        tabIndex={-1}
+      />
     </div>
   );
 };
 
+
 const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialData, isViewMode = false }) => {
-  const [formData, setFormData] = useState<any>(JSON.parse(JSON.stringify(DEFAULT_DATA)));
-  const [activeSection, setActiveSection] = useState(0);
+  const [activeTab, setActiveTab] = useState(1);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
+  
+  const [formData, setFormData] = useState<Partial<MilitaryPersonnel>>(
+    initialData ? structuredClone(initialData) : structuredClone(DEFAULT_DATA)
+  );
 
   useEffect(() => {
     if (initialData) {
-      // Helper convert structure
-      let initialRelations = initialData.quan_he_gia_dinh || {};
-      let flatRelations: any[] = [];
-      
-      const convert = (source: any[], type: string) => source?.map((i: any) => ({
-          moi_quan_he: i.moi_quan_he || type,
-          ho_ten: i.ho_ten,
-          nam_sinh: i.nam_sinh,
-          nghe_nghiep_dia_chi: i.nghe_nghiep || i.nghe_nghiep_dia_chi || '',
-          sdt: i.sdt || '',
-          bao_tin: i.bao_tin || false
-      })) || [];
-
-      if (Array.isArray(initialRelations.than_nhan) && initialRelations.than_nhan.length > 0) {
-          flatRelations = initialRelations.than_nhan;
-      } else {
-          if (initialRelations.bo_me_de) flatRelations = [...flatRelations, ...convert(initialRelations.bo_me_de, 'Bố đẻ')];
-          if (initialRelations.anh_chi_em_ruot) flatRelations = [...flatRelations, ...convert(initialRelations.anh_chi_em_ruot, 'Anh trai')];
-          if (initialRelations.vo) flatRelations.push({ ...initialRelations.vo, moi_quan_he: 'Vợ', nghe_nghiep_dia_chi: initialRelations.vo.nghe_nghiep });
-          if (initialRelations.ban_gai) flatRelations.push({ ...initialRelations.ban_gai, moi_quan_he: 'Bạn gái', nghe_nghiep_dia_chi: initialRelations.ban_gai.nghe_nghiep });
-          if (initialRelations.con) flatRelations = [...flatRelations, ...convert(initialRelations.con, 'Con trai')];
-          if (initialRelations.bo_me_vo) flatRelations = [...flatRelations, ...convert(initialRelations.bo_me_vo, 'Bố vợ')];
-      }
-
-      // Xử lý chuyển đổi dữ liệu kỷ luật cũ
-      let klQuanDoi = initialData.lich_su_vi_pham?.ky_luat_quan_doi || [];
-      if (!Array.isArray(klQuanDoi)) {
-          if (klQuanDoi.co_khong) {
-              klQuanDoi = [{ nam: klQuanDoi.nam || '', hinh_thuc: klQuanDoi.hinh_thuc || '', ly_do: klQuanDoi.ly_do || '' }];
-          } else {
-              klQuanDoi = [];
-          }
-      }
-
-      let vpPhapLuat = initialData.lich_su_vi_pham?.vi_pham_phap_luat || [];
-      if (!Array.isArray(vpPhapLuat)) {
-           if (vpPhapLuat.co_khong) {
-              vpPhapLuat = [{ nam: vpPhapLuat.nam || '', hinh_thuc: vpPhapLuat.hinh_thuc || '', ly_do: vpPhapLuat.ly_do || '' }];
-          } else {
-              vpPhapLuat = [];
-          }
-      }
-
-      // Nâng cấp dữ liệu tệ nạn cũ
-      let teNan = initialData.lich_su_vi_pham?.te_nan_xa_hoi || {};
-      let maTuyMoi = { ...DEFAULT_DATA.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy, ...(typeof teNan.ma_tuy === 'boolean' ? { co_khong: teNan.ma_tuy } : teNan.ma_tuy || {}) };
-      let coBacMoi = { ...DEFAULT_DATA.lich_su_vi_pham.te_nan_xa_hoi.co_bac, ...(typeof teNan.co_bac === 'boolean' ? { co_khong: teNan.co_bac } : teNan.co_bac || {}) };
-
-      // Nâng cấp dữ liệu Yếu tố nước ngoài
-      let nuocNgoai = initialData.yeu_to_nuoc_ngoai || {};
-      let lichSuDi = nuocNgoai.lich_su_di_nuoc_ngoai || [];
-      if (nuocNgoai.di_nuoc_ngoai && Array.isArray(nuocNgoai.di_nuoc_ngoai) && lichSuDi.length === 0) {
-          lichSuDi = nuocNgoai.di_nuoc_ngoai;
-      }
-
-      const mergedData = { 
-        ...DEFAULT_DATA, 
-        ...initialData,
-        quan_he_gia_dinh: {
-            tinh_trang_hon_nhan: initialRelations.tinh_trang_hon_nhan || { 
-                da_ket_hon: !!initialRelations.vo, 
-                co_ban_gai: !!initialRelations.ban_gai 
-            },
-            than_nhan: flatRelations
-        },
-        tai_chinh_suc_khoe: { 
-            ...DEFAULT_DATA.tai_chinh_suc_khoe, 
-            ...(initialData.tai_chinh_suc_khoe || {}),
-            vay_no: { ...DEFAULT_DATA.tai_chinh_suc_khoe.vay_no, ...(initialData.tai_chinh_suc_khoe?.vay_no || {}) },
-            kinh_doanh_dau_tu: {
-                kinh_doanh: { ...DEFAULT_DATA.tai_chinh_suc_khoe.kinh_doanh_dau_tu.kinh_doanh, ...(initialData.tai_chinh_suc_khoe?.kinh_doanh_dau_tu?.kinh_doanh || {}) },
-                dau_tu: { ...DEFAULT_DATA.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu, ...(initialData.tai_chinh_suc_khoe?.kinh_doanh_dau_tu?.dau_tu || {}) }
-            }
-        },
-        lich_su_vi_pham: { 
-            ...DEFAULT_DATA.lich_su_vi_pham, 
-            ...(initialData.lich_su_vi_pham || {}),
-            ky_luat_quan_doi: klQuanDoi,
-            vi_pham_phap_luat: vpPhapLuat,
-            te_nan_xa_hoi: {
-                ...DEFAULT_DATA.lich_su_vi_pham.te_nan_xa_hoi,
-                ...teNan,
-                ma_tuy: maTuyMoi,
-                co_bac: coBacMoi,
-                hut_thuoc: teNan.hut_thuoc !== undefined ? teNan.hut_thuoc : DEFAULT_DATA.lich_su_vi_pham.te_nan_xa_hoi.hut_thuoc
-            }
-        },
-        yeu_to_nuoc_ngoai: { 
-            ...DEFAULT_DATA.yeu_to_nuoc_ngoai, 
-            ...nuocNgoai,
-            lich_su_di_nuoc_ngoai: lichSuDi,
-            dinh_cu: { ...DEFAULT_DATA.yeu_to_nuoc_ngoai.dinh_cu, ...(nuocNgoai.dinh_cu || {}) }
-        },
-        // Merge Ý kiến & Cam đoan
-        y_kien_cam_doan: {
-            ...DEFAULT_DATA.y_kien_cam_doan,
-            ...(initialData.y_kien_cam_doan || {})
-        },
-        mang_xa_hoi: { ...DEFAULT_DATA.mang_xa_hoi, ...(initialData.mang_xa_hoi || {}) },
-        hoan_canh_song: { ...DEFAULT_DATA.hoan_canh_song, ...(initialData.hoan_canh_song || {}) },
-        tieu_su_ban_than: initialData.tieu_su_ban_than || []
-      };
-      
-      setFormData(mergedData);
+      setFormData(structuredClone(initialData));
+    } else {
+      setFormData(structuredClone(DEFAULT_DATA));
     }
   }, [initialData]);
 
-  // Scrollspy logic
   useEffect(() => {
-    const handleScroll = (e: Event) => {
-      const container = e.target as HTMLDivElement;
-      const scrollPos = container.scrollTop + 150;
-      sectionRefs.current.forEach((section, index) => {
-        if (section && section.offsetTop <= scrollPos && (section.offsetTop + section.offsetHeight) > scrollPos) {
-          setActiveSection(index);
-        }
-      });
-    };
-    const formContainer = document.getElementById('form-scroll-container');
-    if (formContainer) formContainer.addEventListener('scroll', handleScroll);
-    return () => {
-      if (formContainer) formContainer.removeEventListener('scroll', handleScroll);
-    };
-  }, []);
+    if (formData.don_vi_id) {
+      setCustomFields(db.getCustomFields(formData.don_vi_id));
+    }
+  }, [formData.don_vi_id]);
 
-  const scrollToSection = (index: number) => {
-    setActiveSection(index);
-    sectionRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (isViewMode) return;
+    const file = event.target.files?.[0];
     if (file) {
-      try {
-        const base64 = await createThumbnail(file, 800, 0.8);
-        setFormData({ ...formData, anh_dai_dien: base64, anh_thumb: base64 });
-      } catch (err) {
-        console.error("Lỗi ảnh:", err);
+      if (file.size > 5 * 1024 * 1024) {
+        alert("File ảnh quá lớn (Tối đa 5MB)");
+        return;
       }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64String = e.target?.result as string;
+        setFormData(prev => ({ ...prev, anh_dai_dien: base64String }));
+      };
+      reader.readAsDataURL(file);
     }
   };
 
-  const handleSave = async () => {
-    if (!formData.ho_ten || !formData.don_vi_id) {
-      alert("Vui lòng nhập Họ tên và Đơn vị!");
+  const handleSave = () => {
+    if (isViewMode) return;
+
+    if (!formData.ho_ten || !formData.cccd || !formData.don_vi_id) {
+      alert('Vui lòng nhập đầy đủ các thông tin bắt buộc (*): Họ tên, CCCD, Đơn vị');
       return;
     }
     
-    // Sao chép formData để xử lý
-    const saveData = { ...formData };
+    const unitName = units.find(u => u.id === formData.don_vi_id)?.name || '';
+    const finalData = { ...formData, don_vi: unitName };
     
-    // Lấy danh sách thân nhân từ form đang nhập
-    const rels = formData.quan_he_gia_dinh.than_nhan || [];
-    
-    // --- KHẮC PHỤC LỖI TẠI ĐÂY ---
-    
-    // 1. Map Vợ/Chồng
-    saveData.quan_he_gia_dinh.vo = rels.find((r:any) => 
-        ['Vợ', 'Chồng'].includes(r.moi_quan_he)) || null;
+    const save = async () => {
+        try {
+            if (initialData && initialData.id) {
+                await db.updatePersonnel(initialData.id, finalData);
+            } else {
+                await db.addPersonnel({ 
+                    ...finalData as MilitaryPersonnel, 
+                    id: Date.now().toString(), 
+                });
+            }
+            onClose();
+        } catch (e) {
+            alert('Lỗi khi lưu hồ sơ: ' + e);
+        }
+    };
+    save();
+  };
 
-    // 2. Map Con cái
-    saveData.quan_he_gia_dinh.con = rels.filter((r:any) => 
-        ['Con trai', 'Con gái', 'Con nuôi'].includes(r.moi_quan_he));
-    
-    // 3. Map Người yêu/Bạn gái
-    saveData.quan_he_gia_dinh.nguoi_yeu = rels.filter((r:any) => 
-        ['Bạn gái', 'Người yêu'].includes(r.moi_quan_he)); // Lưu ý: types.ts dùng key là 'nguoi_yeu' chứ không phải 'ban_gai' (cần check lại types.ts)
-
-    // 4. Map Cha mẹ, Anh chị em (QUAN TRỌNG: Đây là phần bị thiếu)
-    // Lọc lấy những người KHÔNG PHẢI là vợ, chồng, con, người yêu
-    const excludedRoles = ['Vợ', 'Chồng', 'Con trai', 'Con gái', 'Con nuôi', 'Bạn gái', 'Người yêu'];
-    saveData.quan_he_gia_dinh.cha_me_anh_em = rels.filter((r:any) => 
-        !excludedRoles.includes(r.moi_quan_he));
-
-    // Xóa trường 'than_nhan' thừa (vì nó chỉ dùng cho UI, không có trong DB schema types.ts)
-    if (saveData.quan_he_gia_dinh.than_nhan) {
-        delete saveData.quan_he_gia_dinh.than_nhan;
-    }
-
-    try {
-      if (initialData?.id) {
-        await db.updatePersonnel(initialData.id, saveData);
-      } else {
-        await db.addPersonnel(saveData);
+  const updateNested = (path: string, value: any) => {
+    if (isViewMode) return;
+    setFormData(prev => {
+      const updated = structuredClone(prev);
+      const keys = path.split('.');
+      let current: any = updated;
+      for (let i = 0; i < keys.length - 1; i++) {
+        const key = keys[i];
+        if (!current[key]) current[key] = {};
+        current = current[key];
       }
-      onClose();
-    } catch (e) {
-      console.error(e);
-      alert("Lỗi khi lưu dữ liệu: " + e);
-    }
-};
-
-  const inputClass = `w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600/20 transition-all disabled:bg-slate-50 disabled:text-slate-500`;
-  const labelClass = `block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1`;
-  const sectionTitleClass = `text-sm font-black text-slate-800 uppercase tracking-widest border-b border-slate-200 pb-3 mb-6 flex items-center gap-3`;
-  const sectionIconClass = `w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center`;
-
-  const SECTIONS = [
-    { title: "Thông tin cơ bản", icon: User },
-    { title: "Chính trị & Nhập ngũ", icon: Users },
-    { title: "Trình độ & Đào tạo", icon: GraduationCap },
-    { title: "Tiểu sử bản thân", icon: Clock },
-    { title: "Quan hệ gia đình", icon: Heart },
-    { title: "Đời sống & MXH", icon: Share2 },
-    { title: "Tài chính & Sức khỏe", icon: DollarSign },
-    { title: "Lịch sử & An ninh", icon: ShieldAlert },
-    { title: "Yếu tố nước ngoài", icon: Globe },
-    { title: "Ý kiến & Cam đoan", icon: FileSignature }
-  ];
-
-  // Helper render bảng quan hệ
-  const renderRelationTable = (
-        groupFilter: (r: any) => boolean, 
-        title: string, 
-        defaultRole: string, 
-        relationOptions: string[], 
-        canAdd: boolean = true
-    ) => {
-      const itemsWithIndex = formData.quan_he_gia_dinh.than_nhan.map((item: any, index: number) => ({...item, originalIndex: index})).filter(groupFilter);
-
-      return (
-        <div className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-                <h4 className="text-xs font-black uppercase text-slate-500 flex items-center gap-2">
-                    {title}
-                </h4>
-                {canAdd && !isViewMode && (
-                    <button 
-                        onClick={() => {
-                            const newItem = { moi_quan_he: defaultRole, ho_ten: '', nam_sinh: '', nghe_nghiep_dia_chi: '', sdt: '', bao_tin: false };
-                            setFormData({
-                                ...formData,
-                                quan_he_gia_dinh: {
-                                    ...formData.quan_he_gia_dinh,
-                                    than_nhan: [...formData.quan_he_gia_dinh.than_nhan, newItem]
-                                }
-                            });
-                        }}
-                        className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200 hover:bg-green-100 flex items-center gap-1"
-                    >
-                        <Plus size={10}/> Thêm
-                    </button>
-                )}
-            </div>
-            
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold">
-                        <tr>
-                            <th className="p-3 border-r border-slate-200 w-32">Quan hệ</th>
-                            <th className="p-3 border-r border-slate-200 w-48">Họ và Tên</th>
-                            <th className="p-3 border-r border-slate-200 w-20">Năm sinh</th>
-                            <th className="p-3 border-r border-slate-200">Nghề nghiệp / Địa chỉ</th>
-                            <th className="p-3 border-r border-slate-200 w-28">SĐT</th>
-                            <th className="p-3 border-r border-slate-200 w-16 text-center">Báo tin</th>
-                            {!isViewMode && <th className="p-3 w-10 text-center">Xóa</th>}
-                        </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                        {itemsWithIndex.map((item: any) => {
-                             const index = item.originalIndex;
-                             return (
-                                <tr key={index} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
-                                    <td className="p-2 border-r border-slate-100">
-                                        <select
-                                            disabled={isViewMode}
-                                            className="w-full bg-transparent outline-none font-bold text-green-700 text-xs py-1"
-                                            value={item.moi_quan_he}
-                                            onChange={e => {
-                                                const newArr = [...formData.quan_he_gia_dinh.than_nhan];
-                                                newArr[index] = { ...newArr[index], moi_quan_he: e.target.value };
-                                                setFormData({
-                                                    ...formData, 
-                                                    quan_he_gia_dinh: {
-                                                        ...formData.quan_he_gia_dinh, 
-                                                        than_nhan: newArr
-                                                    }
-                                                });
-                                            }}
-                                        >
-                                            {relationOptions.map(opt => (
-                                                <option key={opt} value={opt}>{opt}</option>
-                                            ))}
-                                        </select>
-                                    </td>
-                                    <td className="p-2 border-r border-slate-100">
-                                        <input disabled={isViewMode} type="text" className="w-full bg-transparent outline-none font-bold text-slate-700" placeholder="Nhập tên..." value={item.ho_ten} onChange={e => {
-                                            const newArr = [...formData.quan_he_gia_dinh.than_nhan];
-                                            newArr[index] = { ...newArr[index], ho_ten: e.target.value };
-                                            setFormData({...formData, quan_he_gia_dinh: {...formData.quan_he_gia_dinh, than_nhan: newArr}});
-                                        }} />
-                                    </td>
-                                    <td className="p-2 border-r border-slate-100">
-                                        <input disabled={isViewMode} type="text" className="w-full bg-transparent outline-none" placeholder="yyyy" value={item.nam_sinh} onChange={e => {
-                                            const newArr = [...formData.quan_he_gia_dinh.than_nhan];
-                                            newArr[index] = { ...newArr[index], nam_sinh: e.target.value };
-                                            setFormData({...formData, quan_he_gia_dinh: {...formData.quan_he_gia_dinh, than_nhan: newArr}});
-                                        }} />
-                                    </td>
-                                    <td className="p-2 border-r border-slate-100">
-                                        <input disabled={isViewMode} type="text" className="w-full bg-transparent outline-none" placeholder="Đang ở đâu, làm gì?" value={item.nghe_nghiep_dia_chi} onChange={e => {
-                                            const newArr = [...formData.quan_he_gia_dinh.than_nhan];
-                                            newArr[index] = { ...newArr[index], nghe_nghiep_dia_chi: e.target.value };
-                                            setFormData({...formData, quan_he_gia_dinh: {...formData.quan_he_gia_dinh, than_nhan: newArr}});
-                                        }} />
-                                    </td>
-                                    <td className="p-2 border-r border-slate-100">
-                                        <input disabled={isViewMode} type="text" className="w-full bg-transparent outline-none text-xs" placeholder="09xx..." value={item.sdt} onChange={e => {
-                                            const newArr = [...formData.quan_he_gia_dinh.than_nhan];
-                                            newArr[index] = { ...newArr[index], sdt: e.target.value };
-                                            setFormData({...formData, quan_he_gia_dinh: {...formData.quan_he_gia_dinh, than_nhan: newArr}});
-                                        }} />
-                                    </td>
-                                    <td className="p-2 border-r border-slate-100 text-center">
-                                        <input disabled={isViewMode} type="checkbox" className="w-4 h-4 accent-green-600 rounded cursor-pointer" checked={item.bao_tin} onChange={e => {
-                                            const newArr = [...formData.quan_he_gia_dinh.than_nhan];
-                                            newArr[index] = { ...newArr[index], bao_tin: e.target.checked };
-                                            setFormData({...formData, quan_he_gia_dinh: {...formData.quan_he_gia_dinh, than_nhan: newArr}});
-                                        }} />
-                                    </td>
-                                    {!isViewMode && (
-                                        <td className="p-2 text-center">
-                                            <button onClick={() => {
-                                                const newArr = formData.quan_he_gia_dinh.than_nhan.filter((_:any, i:number) => i !== index);
-                                                setFormData({...formData, quan_he_gia_dinh: {...formData.quan_he_gia_dinh, than_nhan: newArr}});
-                                            }} className="text-slate-400 hover:text-red-500"><Trash2 size={14}/></button>
-                                        </td>
-                                    )}
-                                </tr>
-                             );
-                        })}
-                        {itemsWithIndex.length === 0 && (
-                            <tr><td colSpan={7} className="p-4 text-center text-xs text-slate-400 italic">Chưa có thông tin</td></tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-      );
+      current[keys[keys.length - 1]] = value;
+      return updated;
+    });
   };
 
-  const FAMILY_OPTIONS = ['Bố đẻ', 'Mẹ đẻ', 'Bố nuôi', 'Mẹ nuôi', 'Anh trai', 'Chị gái', 'Em trai', 'Em gái'];
-  const MARRIAGE_OPTIONS = ['Vợ', 'Chồng', 'Con trai', 'Con gái', 'Con nuôi', 'Bố vợ', 'Mẹ vợ', 'Bố chồng', 'Mẹ chồng'];
-  const GF_OPTIONS = ['Bạn gái', 'Người yêu'];
-
-  // Helper render bảng vi phạm/kỷ luật
-  const renderViolationTable = (dataKey: 'ky_luat_quan_doi' | 'vi_pham_phap_luat', title: string) => {
-      const items = formData.lich_su_vi_pham[dataKey] || [];
-      
-      return (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-4">
-            <div className="bg-slate-50 px-4 py-3 flex justify-between items-center border-b border-slate-200">
-                <h4 className="text-xs font-bold text-slate-700 uppercase">{title}</h4>
-                {!isViewMode && (
-                    <button 
-                        onClick={() => {
-                            setFormData({
-                                ...formData,
-                                lich_su_vi_pham: {
-                                    ...formData.lich_su_vi_pham,
-                                    [dataKey]: [...items, { nam: '', hinh_thuc: '', ly_do: '', don_vi_xu_ly: '', noi_dung: '', ket_qua_giai_quyet: '' }]
-                                }
-                            });
-                        }}
-                        className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200 hover:bg-blue-100 flex items-center gap-1"
-                    >
-                        <Plus size={10}/> Thêm
-                    </button>
-                )}
-            </div>
-            
-            {items.length > 0 ? (
-                <div className="divide-y divide-slate-100">
-                    {items.map((item: any, idx: number) => (
-                        <div key={idx} className="p-3 grid grid-cols-12 gap-3 items-center hover:bg-slate-50 transition-colors">
-                            <div className="col-span-2">
-                                <input disabled={isViewMode} type="text" className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs text-center" placeholder="Năm..." value={item.nam} onChange={e => {
-                                    const newItems = [...items];
-                                    newItems[idx].nam = e.target.value;
-                                    setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, [dataKey]: newItems}});
-                                }} />
-                            </div>
-                            <div className="col-span-3">
-                                <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 text-xs" placeholder="Hình thức..." value={item.hinh_thuc} onChange={e => {
-                                    const newItems = [...items];
-                                    newItems[idx].hinh_thuc = e.target.value;
-                                    setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, [dataKey]: newItems}});
-                                }} />
-                            </div>
-                            {dataKey === 'vi_pham_phap_luat' ? (
-                                <div className="col-span-6 grid grid-cols-2 gap-2">
-                                    <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 text-xs" placeholder="Nội dung vi phạm chi tiết..." value={item.ly_do} onChange={e => {
-                                        const newItems = [...items];
-                                        newItems[idx].ly_do = e.target.value;
-                                        setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, [dataKey]: newItems}});
-                                    }} />
-                                    <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 text-xs" placeholder="Kết quả giải quyết..." value={item.ket_qua_giai_quyet} onChange={e => {
-                                        const newItems = [...items];
-                                        newItems[idx].ket_qua_giai_quyet = e.target.value;
-                                        setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, [dataKey]: newItems}});
-                                    }} />
-                                </div>
-                            ) : (
-                                <div className="col-span-6">
-                                    <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 text-xs" placeholder="Lý do & Đơn vị xử lý..." value={item.ly_do} onChange={e => {
-                                        const newItems = [...items];
-                                        newItems[idx].ly_do = e.target.value;
-                                        setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, [dataKey]: newItems}});
-                                    }} />
-                                </div>
-                            )}
-                            
-                            {!isViewMode && (
-                                <div className="col-span-1 text-center">
-                                    <button onClick={() => {
-                                        const newItems = items.filter((_:any, i:number) => i !== idx);
-                                        setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, [dataKey]: newItems}});
-                                    }} className="text-slate-400 hover:text-red-500 p-1"><Trash2 size={14}/></button>
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                <div className="p-4 text-center text-xs text-slate-400 italic">Không có dữ liệu</div>
-            )}
-        </div>
-      );
+  const addRow = (path: string, template: any) => {
+    if (isViewMode) return;
+    setFormData(prev => {
+        const updated = structuredClone(prev);
+        const keys = path.split('.');
+        let current: any = updated;
+        for (const k of keys) {
+            if (!current[k]) current[k] = [];
+            current = current[k];
+        }
+        if (Array.isArray(current)) {
+            current.push(template);
+        }
+        return updated;
+    });
   };
+
+  const removeRow = (path: string, index: number) => {
+    if (isViewMode) return;
+    setFormData(prev => {
+        const updated = structuredClone(prev);
+        const keys = path.split('.');
+        let current: any = updated;
+        for (let i = 0; i < keys.length; i++) {
+             if (!current[keys[i]]) return prev;
+             current = current[keys[i]];
+        }
+        if (Array.isArray(current)) {
+             current.splice(index, 1);
+        }
+        return updated;
+    });
+  };
+
+  // STYLE CHUNG
+  const inputClass = "w-full p-2 border border-gray-200 rounded-md outline-none disabled:bg-gray-50 disabled:text-black disabled:font-medium disabled:opacity-100";
+  const inputClassBold = "w-full p-2 border border-gray-200 rounded-md outline-none font-bold disabled:bg-gray-50 disabled:text-black disabled:opacity-100";
 
   return (
-    <div className="bg-white w-full max-w-6xl h-[95vh] rounded-[2rem] shadow-2xl flex flex-col overflow-hidden animate-slide-up relative">
-      
-      {/* HEADER */}
-      <div className="px-8 py-5 border-b border-slate-100 flex justify-between items-center bg-white z-20 shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-green-50 text-green-700 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner">
-             {isViewMode ? <Eye size={24}/> : (initialData ? <FileEdit size={24}/> : <Plus size={24}/>)}
+    <div className="bg-[#f4f6f8] w-full max-w-7xl max-h-[95vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col border-2 border-[#14452F] animate-fade-in relative z-[200]">
+      {/* Header trạng thái */}
+      {isViewMode && (
+          <div className="bg-yellow-100 text-yellow-800 px-4 py-2 text-center text-xs font-bold uppercase tracking-widest border-b border-yellow-200">
+              Đang ở chế độ xem chi tiết (Không thể chỉnh sửa)
           </div>
-          <div>
-             <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">{isViewMode ? 'Xem hồ sơ' : (initialData ? 'Cập nhật hồ sơ' : 'Thêm quân nhân mới')}</h2>
-             <p className="text-xs font-medium text-slate-400">{units.length} đơn vị trực thuộc hệ thống</p>
-          </div>
-        </div>
-        <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-all">
-          <X size={20} strokeWidth={2.5} />
-        </button>
+      )}
+
+      {/* Navbar Tab */}
+      <div className="bg-white flex overflow-x-auto border-b shrink-0 px-2 pt-2 gap-1 scrollbar-hide">
+        {[
+          { id: 1, label: '1. Thông Tin Chung' },
+          { id: 2, label: '2. Tiểu Sử & MXH' },
+          { id: 3, label: '3. Gia Đình & Hôn Nhân' },
+          { id: 4, label: '4. Yếu Tố Nước Ngoài' },
+          { id: 5, label: '5. Lịch Sử & Tệ Nạn', danger: true },
+          { id: 6, label: '6. Tài Chính & Sức Khỏe', danger: true },
+          { id: 7, label: '7. Cam Kết & Nguyện Vọng' },
+          { id: 8, label: '8. Thông tin bổ sung' },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-3 text-[11px] font-bold uppercase transition-all border-b-2 whitespace-nowrap ${
+              activeTab === tab.id 
+              ? 'border-[#14452F] text-[#14452F] bg-green-50/50' 
+              : `border-transparent text-gray-500 hover:text-gray-700 ${tab.danger ? 'hover:text-red-600' : ''}`
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex-1 overflow-y-auto p-8 bg-white space-y-10 scrollbar-hide">
         
-        {/* SIDEBAR */}
-        <div className="w-64 bg-slate-50 border-r border-slate-100 overflow-y-auto hidden md:block py-6 px-4">
-          <nav className="space-y-1">
-            {SECTIONS.map((sec, idx) => {
-               const Icon = sec.icon;
-               return (
-                <button
-                  key={idx}
-                  onClick={() => scrollToSection(idx)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase transition-all ${activeSection === idx ? 'bg-white text-green-700 shadow-sm border border-slate-100' : 'text-slate-500 hover:bg-white hover:text-slate-700'}`}
-                >
-                  <Icon size={16} className={activeSection === idx ? 'text-green-600' : 'text-slate-400'} />
-                  {sec.title}
-                </button>
-               );
-            })}
-          </nav>
-        </div>
-
-        {/* FORM CONTENT */}
-        <div id="form-scroll-container" className="flex-1 overflow-y-auto p-8 scroll-smooth bg-white">
-          
-          {/* 1. THÔNG TIN CƠ BẢN */}
-          <div ref={el => sectionRefs.current[0] = el} className="mb-12 scroll-mt-6">
-            <h3 className={sectionTitleClass}><div className={sectionIconClass}><User size={18}/></div> Thông tin cơ bản</h3>
-            <div className="flex flex-col md:flex-row gap-8">
-              <div className="w-40 flex-shrink-0 flex flex-col items-center gap-3">
-                <div 
-                  className="w-40 h-52 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer hover:border-green-500 hover:bg-green-50 transition-all overflow-hidden relative group"
-                  onClick={() => !isViewMode && fileInputRef.current?.click()}
-                >
-                  {formData.anh_dai_dien ? (
-                    <img src={formData.anh_dai_dien} alt="Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <>
-                      <Camera size={32} className="text-slate-300 mb-2" />
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">Tải ảnh lên</span>
-                    </>
-                  )}
+        {/* --- TAB 1: THÔNG TIN CHUNG --- */}
+        {activeTab === 1 && (
+          <div className="animate-fade-in space-y-10">
+            <section>
+              <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">
+                Thông tin cơ bản
+              </h3>
+              <div className="grid grid-cols-12 gap-6">
+                <div className="col-span-12 md:col-span-2 flex flex-col items-center">
+                  
+                  {/* ẢNH ĐẠI DIỆN */}
+                  <div className="w-32 h-44 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-50 mb-3 relative overflow-hidden group">
+                    {formData.anh_dai_dien ? (
+                        <img src={formData.anh_dai_dien} className="w-full h-full object-cover" alt="Avatar" />
+                    ) : (
+                        <span className="text-gray-400 text-[10px] font-bold">Ảnh thẻ</span>
+                    )}
+                  </div>
+                  
                   {!isViewMode && (
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Upload className="text-white" size={24}/></div>
+                      <>
+                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+                        <button onClick={() => fileInputRef.current?.click()} className="px-4 py-1.5 border border-gray-300 rounded-md text-[10px] font-bold text-gray-600 flex items-center gap-1 hover:bg-gray-50 transition-colors">
+                            <Camera size={14}/> Chọn ảnh
+                        </button>
+                        {formData.anh_dai_dien && (
+                            <button onClick={() => setFormData(prev => ({...prev, anh_dai_dien: ''}))} className="mt-2 text-[10px] text-red-500 hover:underline">Xóa ảnh</button>
+                        )}
+                      </>
                   )}
-                </div>
-                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-              </div>
 
-              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="md:col-span-2">
-                   <label className={labelClass}>Họ và tên <span className="text-red-500">*</span></label>
-                   <input disabled={isViewMode} type="text" className={`${inputClass} !text-lg !font-bold`} placeholder="NGUYỄN VĂN A" value={formData.ho_ten} onChange={e => setFormData({...formData, ho_ten: e.target.value.toUpperCase()})} />
                 </div>
-                <div><label className={labelClass}>Tên khác / Bí danh</label><input disabled={isViewMode} type="text" className={inputClass} value={formData.ten_khac} onChange={e => setFormData({...formData, ten_khac: e.target.value})} /></div>
-                <div><label className={labelClass}>Số hiệu quân nhân / CCCD</label><input disabled={isViewMode} type="text" className={inputClass} value={formData.cccd} onChange={e => setFormData({...formData, cccd: e.target.value})} /></div>
-                <div><label className={labelClass}>Ngày sinh</label><VietnamDateInput disabled={isViewMode} className={inputClass} value={formData.ngay_sinh} onChange={(val: string) => setFormData({...formData, ngay_sinh: val})} /></div>
-                <div><label className={labelClass}>Số điện thoại</label><input disabled={isViewMode} type="text" className={inputClass} value={formData.sdt_rieng} onChange={e => setFormData({...formData, sdt_rieng: e.target.value})} /></div>
-                <div><label className={labelClass}>Quê quán / HKTT</label><input disabled={isViewMode} type="text" className={inputClass} value={formData.ho_khau_thu_tru} onChange={e => setFormData({...formData, ho_khau_thu_tru: e.target.value})} /></div>
-                <div><label className={labelClass}>Nơi sinh</label><input disabled={isViewMode} type="text" className={inputClass} value={formData.noi_sinh} onChange={e => setFormData({...formData, noi_sinh: e.target.value})} /></div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div><label className={labelClass}>Dân tộc</label><input disabled={isViewMode} type="text" className={inputClass} value={formData.dan_toc} onChange={e => setFormData({...formData, dan_toc: e.target.value})} /></div>
-                    <div><label className={labelClass}>Tôn giáo</label><input disabled={isViewMode} type="text" className={inputClass} value={formData.ton_giao} onChange={e => setFormData({...formData, ton_giao: e.target.value})} /></div>
+                <div className="col-span-12 md:col-span-10 grid grid-cols-3 gap-x-6 gap-y-4">
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">Họ và tên khai sinh <span className="text-red-500">*</span></label>
+                    <input disabled={isViewMode} type="text" className={inputClassBold + " text-[#14452F] uppercase"} value={formData.ho_ten || ''} onChange={e => setFormData({...formData, ho_ten: e.target.value.toUpperCase()})} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">Tên khác (nếu có)</label>
+                    <input disabled={isViewMode} type="text" className={inputClass} value={formData.ten_khac || ''} onChange={e => setFormData({...formData, ten_khac: e.target.value})} />
+                  </div>
+                  
+                  {/* --- SỬ DỤNG VietnamDateInput --- */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">Ngày sinh <span className="text-red-500">*</span></label>
+                    <VietnamDateInput 
+                        disabled={isViewMode}
+                        value={formData.ngay_sinh} 
+                        onChange={(iso) => setFormData({...formData, ngay_sinh: iso})}
+                        className={inputClass + " font-medium"}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">CCCD/CMND <span className="text-red-500">*</span></label>
+                    <input disabled={isViewMode} type="text" className={inputClassBold} value={formData.cccd || ''} onChange={e => setFormData({...formData, cccd: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">SĐT Cá nhân</label>
+                    <input disabled={isViewMode} type="text" className={inputClass} placeholder="Số thường dùng" value={formData.sdt_rieng || ''} onChange={e => setFormData({...formData, sdt_rieng: e.target.value})} />
+                  </div>
+                  <div className="col-span-3">
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">HKTT</label>
+                    <textarea disabled={isViewMode} className={inputClass + " text-xs"} rows={2} placeholder="Ghi cụ thể địa chỉ thường trú..." value={formData.ho_khau_thu_tru || ''} onChange={e => setFormData({...formData, ho_khau_thu_tru: e.target.value})} />
+                  </div>
+
+                  <div className="p-3 bg-green-50 rounded-xl border border-green-100 col-span-3 grid grid-cols-2 gap-4">
+                     <div>
+                        <label className="block text-[10px] font-black text-green-700 mb-1 uppercase tracking-widest">Nghỉ phép thực tế (ngày)</label>
+                        <input disabled={isViewMode} type="number" className="w-full p-2 bg-white border border-green-200 rounded-lg outline-none font-bold text-green-700 disabled:bg-white disabled:text-green-800 disabled:opacity-100" value={formData.nghi_phep_thuc_te} onChange={e => setFormData({...formData, nghi_phep_thuc_te: parseInt(e.target.value) || 0})} />
+                     </div>
+                     <div>
+                        <label className="block text-[10px] font-black text-green-700 mb-1 uppercase tracking-widest">Nghỉ phép tham chiếu (ngày)</label>
+                        <input disabled={isViewMode} type="number" className="w-full p-2 bg-white border border-green-200 rounded-lg outline-none font-bold text-green-700 disabled:bg-white disabled:text-green-800 disabled:opacity-100" value={formData.nghi_phep_tham_chieu} onChange={e => setFormData({...formData, nghi_phep_tham_chieu: parseInt(e.target.value) || 0})} />
+                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">Nơi sinh</label>
+                    <input disabled={isViewMode} type="text" className={inputClass} value={formData.noi_sinh || ''} onChange={e => setFormData({...formData, noi_sinh: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">Dân tộc</label>
+                    <input disabled={isViewMode} type="text" className={inputClass} value={formData.dan_toc || ''} onChange={e => setFormData({...formData, dan_toc: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">Tôn giáo</label>
+                    <input disabled={isViewMode} type="text" className={inputClass} value={formData.ton_giao || ''} onChange={e => setFormData({...formData, ton_giao: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">Trình độ học vấn</label>
+                    <input disabled={isViewMode} type="text" className={inputClass} placeholder="12/12" value={formData.trinh_do_van_hoa || ''} onChange={e => setFormData({...formData, trinh_do_van_hoa: e.target.value})} />
+                  </div>
+                  <div className="flex flex-col justify-center">
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">Đã tốt nghiệp chưa?</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input disabled={isViewMode} type="radio" checked={!!formData.da_tot_nghiep} onChange={() => setFormData({...formData, da_tot_nghiep: true})} className="w-3 h-3 accent-[#14452F]" /> Đã TN</label>
+                      <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input disabled={isViewMode} type="radio" checked={!formData.da_tot_nghiep} onChange={() => setFormData({...formData, da_tot_nghiep: false})} className="w-3 h-3 accent-[#14452F]" /> Chưa TN</label>
+                    </div>
+                  </div>
+                  <div className="col-span-1">
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">Năng khiếu/Sở trường</label>
+                    <textarea disabled={isViewMode} className={inputClass + " text-xs"} rows={1} placeholder="Vẽ, đàn, hát, sửa chữa..." value={formData.nang_khieu_so_truong || ''} onChange={e => setFormData({...formData, nang_khieu_so_truong: e.target.value})} />
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            </section>
 
-          {/* 2. CHÍNH TRỊ & NHẬP NGŨ */}
-          <div ref={el => sectionRefs.current[1] = el} className="mb-12 scroll-mt-6">
-            <h3 className={sectionTitleClass}><div className={sectionIconClass}><Users size={18}/></div> Chính trị & Nhập ngũ</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
-              <div>
-                  <label className={labelClass}>Đơn vị <span className="text-red-500">*</span></label>
-                  <select disabled={isViewMode} className={inputClass} value={formData.don_vi_id} onChange={e => setFormData({...formData, don_vi_id: e.target.value})}>
+            <section className="border-t pt-8">
+              <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Đơn vị & Tổ chức</h3>
+              <div className="grid grid-cols-5 gap-6">
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold text-gray-600 mb-1">Đơn vị <span className="text-red-500">*</span></label>
+                  <select disabled={isViewMode} className={inputClassBold} value={formData.don_vi_id || ''} onChange={e => setFormData({...formData, don_vi_id: e.target.value})}>
                     <option value="">-- Chọn đơn vị --</option>
                     {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
-              </div>
-              <div>
-                  <label className={labelClass}>Cấp bậc</label>
-                  <select disabled={isViewMode} className={inputClass} value={formData.cap_bac} onChange={e => setFormData({...formData, cap_bac: e.target.value})}>
-                    {['Binh nhì', 'Binh nhất', 'Hạ sĩ', 'Trung sĩ', 'Thượng sĩ', 'Thiếu úy', 'Trung úy', 'Thượng úy', 'Đại úy', 'Thiếu tá', 'Trung tá', 'Thượng tá', 'Đại tá'].map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-              </div>
-              <div><label className={labelClass}>Chức vụ</label><input disabled={isViewMode} type="text" className={inputClass} value={formData.chuc_vu} onChange={e => setFormData({...formData, chuc_vu: e.target.value})} /></div>
-              <div><label className={labelClass}>Ngày nhập ngũ</label><VietnamDateInput disabled={isViewMode} className={inputClass} value={formData.nhap_ngu_ngay} onChange={(val: string) => setFormData({...formData, nhap_ngu_ngay: val})} /></div>
-              <div><label className={labelClass}>Ngày xuất ngũ (Dự kiến)</label><VietnamDateInput disabled={isViewMode} className={inputClass} value={formData.xuat_ngu_ngay} onChange={(val: string) => setFormData({...formData, xuat_ngu_ngay: val})} /></div>
-              <div><label className={labelClass}>Ngày vào Đoàn</label><VietnamDateInput disabled={isViewMode} className={inputClass} value={formData.ngay_vao_doan} onChange={(val: string) => setFormData({...formData, ngay_vao_doan: val})} /></div>
-              <div><label className={labelClass}>Ngày vào Đảng</label><VietnamDateInput disabled={isViewMode} className={inputClass} value={formData.vao_dang_ngay} onChange={(val: string) => setFormData({...formData, vao_dang_ngay: val})} /></div>
-            </div>
-            
-            <div>
-                 <label className={labelClass}>Các hình thức Khen thưởng</label>
-                 <textarea disabled={isViewMode} className={inputClass} rows={2} placeholder="Huân chương, huy chương, bằng khen..." value={formData.khen_thuong} onChange={e => setFormData({...formData, khen_thuong: e.target.value})} />
-            </div>
-          </div>
-
-          {/* 3. TRÌNH ĐỘ & ĐÀO TẠO */}
-          <div ref={el => sectionRefs.current[2] = el} className="mb-12 scroll-mt-6">
-            <h3 className={sectionTitleClass}><div className={sectionIconClass}><GraduationCap size={18}/></div> Trình độ & Đào tạo</h3>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                 <div>
-                    <label className={labelClass}>Trình độ văn hóa</label>
-                    <select disabled={isViewMode} className={inputClass} value={formData.trinh_do_van_hoa} onChange={e => setFormData({...formData, trinh_do_van_hoa: e.target.value})}>
-                      {['12/12', '9/12', 'Đại học', 'Cao đẳng', 'Trung cấp', 'Thạc sĩ'].map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                 </div>
-                 <div className="flex items-center gap-4 pt-6">
-                     <label className="flex items-center gap-3 cursor-pointer">
-                        <input disabled={isViewMode} type="checkbox" className="w-5 h-5 accent-green-600 rounded" checked={formData.da_tot_nghiep} onChange={e => setFormData({...formData, da_tot_nghiep: e.target.checked})} />
-                        <span className="text-sm font-bold text-slate-700">Đã tốt nghiệp / Có bằng cấp</span>
-                     </label>
-                 </div>
-                 <div className="md:col-span-2">
-                    <label className={labelClass}>Năng khiếu / Sở trường</label>
-                    <textarea disabled={isViewMode} className={inputClass} rows={2} value={formData.nang_khieu_so_truong} onChange={e => setFormData({...formData, nang_khieu_so_truong: e.target.value})} placeholder="Vd: Lái xe, Bơi lội, CNTT..." />
-                 </div>
-             </div>
-          </div>
-
-          {/* 4. TIỂU SỬ BẢN THÂN */}
-          <div ref={el => sectionRefs.current[3] = el} className="mb-12 scroll-mt-6">
-            <h3 className={sectionTitleClass}><div className={sectionIconClass}><Clock size={18}/></div> Tiểu sử bản thân</h3>
-            <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
-                <div className="flex justify-between items-center mb-4">
-                   <h4 className="text-xs font-black uppercase text-slate-500">Tóm tắt quá trình</h4>
-                   {!isViewMode && <button onClick={() => setFormData({...formData, tieu_su_ban_than: [...(formData.tieu_su_ban_than || []), { time: '', job: '', place: '' }]})} className="text-[10px] font-bold text-green-600 bg-white px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-50 flex items-center gap-1"><Plus size={12}/> THÊM MỐC</button>}
                 </div>
-                <div className="space-y-3">
-                    {formData.tieu_su_ban_than?.map((item: any, idx: number) => (
-                        <div key={idx} className="flex gap-2 items-start">
-                            <input disabled={isViewMode} type="text" placeholder="Thời gian (Vd: 2010-2015)" className={`${inputClass} !w-40`} value={item.time} onChange={e => {
-                                const newData = [...formData.tieu_su_ban_than]; newData[idx].time = e.target.value; setFormData({...formData, tieu_su_ban_than: newData});
-                            }} />
-                            <input disabled={isViewMode} type="text" placeholder="Làm gì, chức vụ?" className={inputClass} value={item.job} onChange={e => {
-                                const newData = [...formData.tieu_su_ban_than]; newData[idx].job = e.target.value; setFormData({...formData, tieu_su_ban_than: newData});
-                            }} />
-                            <input disabled={isViewMode} type="text" placeholder="Ở đâu, đơn vị nào?" className={inputClass} value={item.place} onChange={e => {
-                                const newData = [...formData.tieu_su_ban_than]; newData[idx].place = e.target.value; setFormData({...formData, tieu_su_ban_than: newData});
-                            }} />
-                             {!isViewMode && <button onClick={() => {
-                                 const newData = formData.tieu_su_ban_than.filter((_:any, i:number) => i!==idx); setFormData({...formData, tieu_su_ban_than: newData});
-                             }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>}
-                        </div>
-                    ))}
-                    {(!formData.tieu_su_ban_than || formData.tieu_su_ban_than.length === 0) && <p className="text-sm text-slate-400 italic text-center py-2">Chưa cập nhật tiểu sử</p>}
-                </div>
-            </div>
-          </div>
-
-          {/* 5. QUAN HỆ GIA ĐÌNH (DẠNG BẢNG - TỐI ƯU KHÔNG GIAN) */}
-          <div ref={el => sectionRefs.current[4] = el} className="mb-12 scroll-mt-6">
-            <h3 className={sectionTitleClass}><div className={sectionIconClass}><Heart size={18}/></div> Quan hệ gia đình</h3>
-            
-            {/* Control Panel: Checkbox trạng thái hôn nhân */}
-            <div className="flex gap-6 mb-4 px-4 py-3 bg-slate-50 rounded-xl border border-slate-200">
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <input 
-                        disabled={isViewMode} 
-                        type="checkbox" 
-                        className="w-5 h-5 accent-blue-600 rounded" 
-                        checked={formData.quan_he_gia_dinh.tinh_trang_hon_nhan.da_ket_hon} 
-                        onChange={e => setFormData({
-                            ...formData, 
-                            quan_he_gia_dinh: {
-                                ...formData.quan_he_gia_dinh, 
-                                tinh_trang_hon_nhan: { ...formData.quan_he_gia_dinh.tinh_trang_hon_nhan, da_ket_hon: e.target.checked }
-                            }
-                        })} 
-                    />
-                    <span className={`text-xs font-bold uppercase ${formData.quan_he_gia_dinh.tinh_trang_hon_nhan.da_ket_hon ? 'text-blue-700' : 'text-slate-500'}`}>Đã lập gia đình (Vợ/Con)</span>
-                </label>
-
-                {!formData.quan_he_gia_dinh.tinh_trang_hon_nhan.da_ket_hon && (
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input 
-                            disabled={isViewMode} 
-                            type="checkbox" 
-                            className="w-5 h-5 accent-pink-500 rounded" 
-                            checked={formData.quan_he_gia_dinh.tinh_trang_hon_nhan.co_ban_gai} 
-                            onChange={e => setFormData({
-                                ...formData, 
-                                quan_he_gia_dinh: {
-                                    ...formData.quan_he_gia_dinh, 
-                                    tinh_trang_hon_nhan: { ...formData.quan_he_gia_dinh.tinh_trang_hon_nhan, co_ban_gai: e.target.checked }
-                                }
-                            })} 
-                        />
-                        <span className={`text-xs font-bold uppercase ${formData.quan_he_gia_dinh.tinh_trang_hon_nhan.co_ban_gai ? 'text-pink-600' : 'text-slate-500'}`}>Đang có bạn gái</span>
-                    </label>
-                )}
-            </div>
-
-            {/* Bảng 1: Bố mẹ đẻ & Anh chị em (Luôn hiển thị) */}
-            {renderRelationTable(
-                (item) => FAMILY_OPTIONS.includes(item.moi_quan_he),
-                'Thân nhân (Bố mẹ, Anh chị em ruột)',
-                'Bố đẻ',
-                FAMILY_OPTIONS
-            )}
-
-            {/* Bảng 2: Vợ & Con & Bố mẹ vợ (Chỉ hiện khi đã kết hôn) */}
-            {formData.quan_he_gia_dinh.tinh_trang_hon_nhan.da_ket_hon && renderRelationTable(
-                (item) => MARRIAGE_OPTIONS.includes(item.moi_quan_he),
-                'Gia đình nhỏ (Vợ/Chồng, Con, Nhạc phụ mẫu)',
-                'Vợ',
-                MARRIAGE_OPTIONS
-            )}
-
-            {/* Bảng 3: Bạn gái (Chỉ hiện khi có bạn gái & chưa kết hôn) */}
-            {formData.quan_he_gia_dinh.tinh_trang_hon_nhan.co_ban_gai && !formData.quan_he_gia_dinh.tinh_trang_hon_nhan.da_ket_hon && renderRelationTable(
-                (item) => GF_OPTIONS.includes(item.moi_quan_he),
-                'Thông tin bạn gái',
-                'Bạn gái',
-                GF_OPTIONS,
-                // Logic: Chỉ cho thêm 1 bạn gái
-                !formData.quan_he_gia_dinh.than_nhan.some((i:any) => GF_OPTIONS.includes(i.moi_quan_he))
-            )}
-          </div>
-
-          {/* 6. ĐỜI SỐNG & MXH */}
-          <div ref={el => sectionRefs.current[5] = el} className="mb-12 scroll-mt-6">
-             <h3 className={sectionTitleClass}><div className={sectionIconClass}><Share2 size={18}/></div> Đời sống & Mạng xã hội</h3>
-             
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                 <div className="space-y-4">
-                     <h4 className="text-xs font-black uppercase text-slate-500 border-b border-slate-100 pb-2 mb-2 flex items-center gap-2"><Home size={14}/> Điều kiện sinh hoạt</h4>
-                     <div>
-                        <label className={labelClass}>Hoàn cảnh sống chung với</label>
-                        <input disabled={isViewMode} type="text" className={inputClass} placeholder="Vd: Bố mẹ, Vợ con, Một mình..." value={formData.hoan_canh_song.song_chung} onChange={e => setFormData({...formData, hoan_canh_song: {...formData.hoan_canh_song, song_chung: e.target.value}})} />
-                     </div>
-                     <div>
-                        <label className={labelClass}>Tình trạng nhà ở</label>
-                        <input disabled={isViewMode} type="text" className={inputClass} placeholder="Vd: Nhà riêng, Nhà thuê, Tập thể..." value={formData.hoan_canh_song.tinh_trang_nha_o} onChange={e => setFormData({...formData, hoan_canh_song: {...formData.hoan_canh_song, tinh_trang_nha_o: e.target.value}})} />
-                     </div>
-                     <div>
-                        <label className={labelClass}>Hoàn cảnh gia đình</label>
-                        <select 
-                            disabled={isViewMode} 
-                            className={inputClass} 
-                            value={formData.hoan_canh_song.hoan_canh_gia_dinh} 
-                            onChange={e => setFormData({...formData, hoan_canh_song: {...formData.hoan_canh_song, hoan_canh_gia_dinh: e.target.value}})}
-                        >
-                            <option value="">-- Chọn hoàn cảnh --</option>
-                            <option value="Khá giả">Khá giả</option>
-                            <option value="Bình thường">Bình thường (Đủ ăn)</option>
-                            <option value="Khó khăn">Khó khăn</option>
-                            <option value="Đặc biệt khó khăn">Đặc biệt khó khăn</option>
-                        </select>
-                     </div>
-                 </div>
-
-                 <div className="space-y-3">
-                     <h4 className="text-xs font-black uppercase text-slate-500 border-b border-slate-100 pb-2 mb-2 flex items-center gap-2"><Globe size={14}/> Mạng xã hội</h4>
-                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-blue-100 text-blue-600 flex items-center justify-center shrink-0"><Facebook size={16}/></div>
-                        <div className="flex-1">
-                            <label className={labelClass}>FACEBOOK</label>
-                            <input disabled={isViewMode} type="text" className={inputClass} placeholder="Link/ID..." value={formData.mang_xa_hoi.facebook?.join(', ') || ''} onChange={e => setFormData({...formData, mang_xa_hoi: {...formData.mang_xa_hoi, facebook: e.target.value.split(',').map((s:string) => s.trim())}})} />
-                        </div>
-                     </div>
-                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-blue-500 text-white flex items-center justify-center shrink-0"><MessageCircle size={16}/></div>
-                        <div className="flex-1">
-                            <label className={labelClass}>ZALO</label>
-                            <input disabled={isViewMode} type="text" className={inputClass} placeholder="Số điện thoại Zalo..." value={formData.mang_xa_hoi.zalo?.join(', ') || ''} onChange={e => setFormData({...formData, mang_xa_hoi: {...formData.mang_xa_hoi, zalo: e.target.value.split(',').map((s:string) => s.trim())}})} />
-                        </div>
-                     </div>
-                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-black text-white flex items-center justify-center shrink-0"><Smartphone size={16}/></div>
-                        <div className="flex-1">
-                            <label className={labelClass}>TIKTOK</label>
-                            <input disabled={isViewMode} type="text" className={inputClass} placeholder="ID kênh..." value={formData.mang_xa_hoi.tiktok?.join(', ') || ''} onChange={e => setFormData({...formData, mang_xa_hoi: {...formData.mang_xa_hoi, tiktok: e.target.value.split(',').map((s:string) => s.trim())}})} />
-                        </div>
-                     </div>
-                 </div>
-             </div>
-          </div>
-
-          {/* 7. TÀI CHÍNH & SỨC KHỎE (Chi tiết hóa) */}
-          <div ref={el => sectionRefs.current[6] = el} className="mb-12 scroll-mt-6">
-            <h3 className={sectionTitleClass}><div className={sectionIconClass}><DollarSign size={18}/></div> Tài chính & Sức khỏe</h3>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Cột 1: Tài chính */}
-                <div className="space-y-4">
-                    <h4 className="text-xs font-black uppercase text-green-600 border-b border-green-100 pb-2 mb-2 flex items-center gap-2"><DollarSign size={14}/> Tình hình tài chính</h4>
-                    
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className={labelClass}>Thu nhập (VNĐ)</label>
-                            <input disabled={isViewMode} type="text" className={inputClass} placeholder="Lương/Thưởng..." value={formData.tai_chinh_suc_khoe.thu_nhap} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, thu_nhap: e.target.value}})} />
-                        </div>
-                        <div>
-                            <label className={labelClass}>Tài sản chính</label>
-                            <input disabled={isViewMode} type="text" className={inputClass} placeholder="Nhà, xe..." value={formData.tai_chinh_suc_khoe.tai_san} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, tai_san: e.target.value}})} />
-                        </div>
-                    </div>
-
-                    <div className={`p-4 rounded-xl border ${formData.tai_chinh_suc_khoe.vay_no.co_khong ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
-                        <div className="flex justify-between items-center mb-3">
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <input disabled={isViewMode} type="checkbox" className="w-5 h-5 accent-red-600 rounded" checked={formData.tai_chinh_suc_khoe.vay_no.co_khong} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, vay_no: {...formData.tai_chinh_suc_khoe.vay_no, co_khong: e.target.checked}}})} />
-                                <span className={`text-sm font-black uppercase ${formData.tai_chinh_suc_khoe.vay_no.co_khong ? 'text-red-700' : 'text-slate-500'}`}>Có vay nợ / Tín dụng?</span>
-                            </label>
-                            {formData.tai_chinh_suc_khoe.vay_no.co_khong && (
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input disabled={isViewMode} type="checkbox" className="w-4 h-4 accent-blue-600 rounded" checked={formData.tai_chinh_suc_khoe.vay_no.gia_dinh_biet} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, vay_no: {...formData.tai_chinh_suc_khoe.vay_no, gia_dinh_biet: e.target.checked}}})} />
-                                    <span className="text-[10px] font-bold text-blue-600">GIA ĐÌNH ĐÃ BIẾT</span>
-                                </label>
-                            )}
-                        </div>
-                        
-                        {formData.tai_chinh_suc_khoe.vay_no.co_khong && (
-                            <div className="space-y-3 animate-fade-in">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[9px] font-bold text-slate-400 uppercase">Người đứng tên</label>
-                                        <input disabled={isViewMode} type="text" className="w-full bg-white border border-red-200 rounded px-2 py-1.5 text-xs font-bold" placeholder="Tên người vay..." value={formData.tai_chinh_suc_khoe.vay_no.nguoi_vay} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, vay_no: {...formData.tai_chinh_suc_khoe.vay_no, nguoi_vay: e.target.value}}})} />
-                                    </div>
-                                    <div>
-                                        <label className="text-[9px] font-bold text-slate-400 uppercase">Người trả nợ</label>
-                                        <input disabled={isViewMode} type="text" className="w-full bg-white border border-red-200 rounded px-2 py-1.5 text-xs font-bold" placeholder="Tên người trả..." value={formData.tai_chinh_suc_khoe.vay_no.nguoi_tra} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, vay_no: {...formData.tai_chinh_suc_khoe.vay_no, nguoi_tra: e.target.value}}})} />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <input disabled={isViewMode} type="text" className="w-full bg-white border border-red-200 rounded px-2 py-1.5 text-xs" placeholder="Vay của ai/Tổ chức nào?" value={formData.tai_chinh_suc_khoe.vay_no.chu_no} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, vay_no: {...formData.tai_chinh_suc_khoe.vay_no, chu_no: e.target.value}}})} />
-                                    <input disabled={isViewMode} type="text" className="w-full bg-white border border-red-200 rounded px-2 py-1.5 text-xs font-black text-red-600" placeholder="Số tiền (VNĐ)..." value={formData.tai_chinh_suc_khoe.vay_no.so_tien} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, vay_no: {...formData.tai_chinh_suc_khoe.vay_no, so_tien: e.target.value}}})} />
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <input disabled={isViewMode} type="text" className="w-full bg-white border border-red-200 rounded px-2 py-1.5 text-xs" placeholder="Hình thức vay..." value={formData.tai_chinh_suc_khoe.vay_no.hinh_thuc} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, vay_no: {...formData.tai_chinh_suc_khoe.vay_no, hinh_thuc: e.target.value}}})} />
-                                    <input disabled={isViewMode} type="text" className="w-full bg-white border border-red-200 rounded px-2 py-1.5 text-xs" placeholder="Hạn trả..." value={formData.tai_chinh_suc_khoe.vay_no.han_tra} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, vay_no: {...formData.tai_chinh_suc_khoe.vay_no, han_tra: e.target.value}}})} />
-                                </div>
-                                <input disabled={isViewMode} type="text" className="w-full bg-white border border-red-200 rounded px-2 py-1.5 text-xs" placeholder="Mục đích vay..." value={formData.tai_chinh_suc_khoe.vay_no.muc_dich} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, vay_no: {...formData.tai_chinh_suc_khoe.vay_no, muc_dich: e.target.value}}})} />
-                                <input disabled={isViewMode} type="text" className="w-full bg-white border border-red-200 rounded px-2 py-1.5 text-xs" placeholder="Khả năng chi trả hiện tại..." value={formData.tai_chinh_suc_khoe.vay_no.kha_nang_tra} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, vay_no: {...formData.tai_chinh_suc_khoe.vay_no, kha_nang_tra: e.target.value}}})} />
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                        <div className="flex justify-between items-center mb-2">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input disabled={isViewMode} type="checkbox" className="w-4 h-4 accent-green-600" checked={formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.kinh_doanh.co_khong} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, kinh_doanh_dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu, kinh_doanh: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.kinh_doanh, co_khong: e.target.checked}}}})} />
-                                <span className="text-xs font-bold uppercase text-green-700">Có Kinh doanh thêm</span>
-                            </label>
-                        </div>
-                        {formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.kinh_doanh.co_khong && (
-                            <div className="space-y-2 animate-fade-in pl-6">
-                                <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs" placeholder="Lĩnh vực kinh doanh..." value={formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.kinh_doanh.linh_vuc} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, kinh_doanh_dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu, kinh_doanh: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.kinh_doanh, linh_vuc: e.target.value}}}})} />
-                                <div className="grid grid-cols-2 gap-2">
-                                    <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1.5 text-xs" placeholder="Làm với ai?..." value={formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.kinh_doanh.doi_tac} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, kinh_doanh_dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu, kinh_doanh: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.kinh_doanh, doi_tac: e.target.value}}}})} />
-                                    <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1.5 text-xs" placeholder="Vốn đầu tư..." value={formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.kinh_doanh.so_von} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, kinh_doanh_dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu, kinh_doanh: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.kinh_doanh, so_von: e.target.value}}}})} />
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="border-t border-slate-200 pt-3 mt-2">
-                            <label className="flex items-center gap-2 cursor-pointer mb-2">
-                                <input disabled={isViewMode} type="checkbox" className="w-4 h-4 accent-blue-600" checked={formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu.co_khong} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, kinh_doanh_dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu, dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu, co_khong: e.target.checked}}}})} />
-                                <span className="text-xs font-bold uppercase text-blue-700">Có Đầu tư tài chính</span>
-                            </label>
-                            {formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu.co_khong && (
-                                <div className="space-y-2 animate-fade-in pl-6">
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1.5 text-xs" placeholder="Loại hình (CK, BĐS...)..." value={formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu.loai_hinh} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, kinh_doanh_dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu, dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu, loai_hinh: e.target.value}}}})} />
-                                        <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1.5 text-xs" placeholder="Thời gian bắt đầu..." value={formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu.thoi_gian} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, kinh_doanh_dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu, dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu, thoi_gian: e.target.value}}}})} />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1.5 text-xs" placeholder="Đầu tư với ai?..." value={formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu.doi_tac} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, kinh_doanh_dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu, dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu, doi_tac: e.target.value}}}})} />
-                                        <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1.5 text-xs" placeholder="Số vốn..." value={formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu.so_von} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, kinh_doanh_dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu, dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu, so_von: e.target.value}}}})} />
-                                    </div>
-                                    <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs" placeholder="Tên công ty/Sàn..." value={formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu.ten_cong_ty} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, kinh_doanh_dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu, dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu, ten_cong_ty: e.target.value}}}})} />
-                                    <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs" placeholder="Địa chỉ/Trụ sở..." value={formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu.dia_chi_cong_ty} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, kinh_doanh_dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu, dau_tu: {...formData.tai_chinh_suc_khoe.kinh_doanh_dau_tu.dau_tu, dia_chi_cong_ty: e.target.value}}}})} />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Cột 2: Sức khỏe */}
-                <div className="space-y-4">
-                     <h4 className="text-xs font-black uppercase text-blue-600 border-b border-blue-100 pb-2 mb-2 flex items-center gap-2"><Activity size={14}/> Tình trạng sức khỏe</h4>
-                     
-                     <div className="grid grid-cols-2 gap-3">
-                         <div>
-                             <label className={labelClass}>Phân loại SK</label>
-                             <select disabled={isViewMode} className={inputClass} value={formData.tai_chinh_suc_khoe.phan_loai_suc_khoe} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, phan_loai_suc_khoe: e.target.value}})}>
-                                 <option value="Loại 1">Loại 1 (Tốt)</option>
-                                 <option value="Loại 2">Loại 2 (Khá)</option>
-                                 <option value="Loại 3">Loại 3 (TB)</option>
-                                 <option value="Loại 4">Loại 4 (Yếu)</option>
-                             </select>
-                         </div>
-                         <div><label className={labelClass}>Nhóm máu</label><input disabled={isViewMode} type="text" className={inputClass} value={formData.tai_chinh_suc_khoe.nhom_mau} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, nhom_mau: e.target.value}})} /></div>
-                     </div>
-
-                     <div className="grid grid-cols-2 gap-3">
-                         <div><label className={labelClass}>Chiều cao (cm)</label><input disabled={isViewMode} type="text" className={inputClass} value={formData.tai_chinh_suc_khoe.chieu_cao} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, chieu_cao: e.target.value}})} /></div>
-                         <div><label className={labelClass}>Cân nặng (kg)</label><input disabled={isViewMode} type="text" className={inputClass} value={formData.tai_chinh_suc_khoe.can_nang} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, can_nang: e.target.value}})} /></div>
-                     </div>
-
-                     <div>
-                         <label className={labelClass}>Bệnh mãn tính / Lưu ý</label>
-                         <textarea disabled={isViewMode} className={inputClass} rows={2} placeholder="Bệnh lý cần chú ý..." value={formData.tai_chinh_suc_khoe.benh_man_tinh} onChange={e => setFormData({...formData, tai_chinh_suc_khoe: {...formData.tai_chinh_suc_khoe, benh_man_tinh: e.target.value}})} />
-                     </div>
-                </div>
-             </div>
-          </div>
-
-          {/* 8. LỊCH SỬ & AN NINH (Chi tiết hóa) */}
-          <div ref={el => sectionRefs.current[7] = el} className="mb-12 scroll-mt-6">
-            <h3 className={sectionTitleClass}><div className={sectionIconClass}><ShieldAlert size={18}/></div> Lịch sử & An ninh</h3>
-            
-            <div className="grid grid-cols-1 gap-8">
-                {/* Cột 1: Vi phạm & Kỷ luật */}
-                <div className="space-y-4">
-                    {/* Bảng Kỷ luật Quân đội */}
-                    {renderViolationTable('ky_luat_quan_doi', 'Kỷ luật Quân đội')}
-
-                    {/* Bảng Vi phạm Pháp luật */}
-                    {renderViolationTable('vi_pham_phap_luat', 'Vi phạm Pháp luật (Tiền án/sự)')}
-                </div>
-
-                {/* Cột 2: Tệ nạn & Quan hệ (Chi tiết hóa) */}
-                <div className="space-y-4">
-                    <h4 className="text-xs font-black uppercase text-purple-600 border-b border-purple-100 pb-2 mb-2 flex items-center gap-2"><AlertTriangle size={14}/> Các vấn đề khác</h4>
-                    
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-                        {/* MA TÚY */}
-                        <div className="border-b border-slate-200 pb-4">
-                            <label className="flex items-center gap-2 cursor-pointer mb-2">
-                                <input disabled={isViewMode} type="checkbox" className="w-4 h-4 accent-purple-600" checked={formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy.co_khong} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, ma_tuy: {...formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy, co_khong: e.target.checked}}}})} />
-                                <span className="text-xs font-bold uppercase text-purple-700">Dấu hiệu sử dụng Ma túy / Chất gây nghiện</span>
-                            </label>
-                            {formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy.co_khong && (
-                                <div className="grid grid-cols-2 gap-3 pl-6 animate-fade-in">
-                                    <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1 text-xs" placeholder="Loại chất sử dụng..." value={formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy.loai_chat} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, ma_tuy: {...formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy, loai_chat: e.target.value}}}})} />
-                                    <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1 text-xs" placeholder="Thời gian bắt đầu..." value={formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy.thoi_gian_bat_dau} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, ma_tuy: {...formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy, thoi_gian_bat_dau: e.target.value}}}})} />
-                                    <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1 text-xs" placeholder="Số lần dùng..." value={formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy.so_lan_su_dung} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, ma_tuy: {...formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy, so_lan_su_dung: e.target.value}}}})} />
-                                    <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1 text-xs" placeholder="Dùng chung với ai?..." value={formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy.nguoi_cung_su_dung} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, ma_tuy: {...formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy, nguoi_cung_su_dung: e.target.value}}}})} />
-                                    <input disabled={isViewMode} type="text" className="col-span-2 bg-white border border-slate-300 rounded px-2 py-1 text-xs" placeholder="Hình thức xử lý (nếu có)..." value={formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy.hinh_thuc_xu_ly} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, ma_tuy: {...formData.lich_su_vi_pham.te_nan_xa_hoi.ma_tuy, hinh_thuc_xu_ly: e.target.value}}}})} />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* CỜ BẠC */}
-                        <div className="border-b border-slate-200 pb-4">
-                            <label className="flex items-center gap-2 cursor-pointer mb-2">
-                                <input disabled={isViewMode} type="checkbox" className="w-4 h-4 accent-purple-600" checked={formData.lich_su_vi_pham.te_nan_xa_hoi.co_bac.co_khong} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, co_bac: {...formData.lich_su_vi_pham.te_nan_xa_hoi.co_bac, co_khong: e.target.checked}}}})} />
-                                <span className="text-xs font-bold uppercase text-purple-700">Tham gia Cờ bạc / Cá độ</span>
-                            </label>
-                            {formData.lich_su_vi_pham.te_nan_xa_hoi.co_bac.co_khong && (
-                                <div className="grid grid-cols-2 gap-3 pl-6 animate-fade-in">
-                                    <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1 text-xs" placeholder="Hình thức chơi (Lô đề, bóng đá...)..." value={formData.lich_su_vi_pham.te_nan_xa_hoi.co_bac.hinh_thuc} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, co_bac: {...formData.lich_su_vi_pham.te_nan_xa_hoi.co_bac, hinh_thuc: e.target.value}}}})} />
-                                    <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1 text-xs" placeholder="Thời gian & Địa điểm chơi..." value={formData.lich_su_vi_pham.te_nan_xa_hoi.co_bac.thoi_gian_choi} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, co_bac: {...formData.lich_su_vi_pham.te_nan_xa_hoi.co_bac, thoi_gian_choi: e.target.value}}}})} />
-                                    <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1 text-xs" placeholder="Chơi với ai?..." value={formData.lich_su_vi_pham.te_nan_xa_hoi.co_bac.nguoi_cung_choi} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, co_bac: {...formData.lich_su_vi_pham.te_nan_xa_hoi.co_bac, nguoi_cung_choi: e.target.value}}}})} />
-                                    <input disabled={isViewMode} type="text" className="bg-white border border-slate-300 rounded px-2 py-1 text-xs" placeholder="Số tiền thắng/thua..." value={formData.lich_su_vi_pham.te_nan_xa_hoi.co_bac.so_tien_thang_thua} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, co_bac: {...formData.lich_su_vi_pham.te_nan_xa_hoi.co_bac, so_tien_thang_thua: e.target.value}}}})} />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* CÁC TỆ NẠN KHÁC */}
-                        <div className="flex gap-4">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input disabled={isViewMode} type="checkbox" className="w-4 h-4 accent-purple-600" checked={formData.lich_su_vi_pham.te_nan_xa_hoi.ruou_che} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, ruou_che: e.target.checked}}})} />
-                                <span className="text-xs font-medium">Hay rượu chè</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input disabled={isViewMode} type="checkbox" className="w-4 h-4 accent-purple-600" checked={formData.lich_su_vi_pham.te_nan_xa_hoi.hut_thuoc} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, hut_thuoc: e.target.checked}}})} />
-                                <span className="text-xs font-medium">Thường xuyên hút thuốc lá / Thuốc lá điện tử</span>
-                            </label>
-                        </div>
-                        
-                        <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs" placeholder="Ghi chú chung về tệ nạn..." value={formData.lich_su_vi_pham.te_nan_xa_hoi.ghi_chu_chung} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, te_nan_xa_hoi: {...formData.lich_su_vi_pham.te_nan_xa_hoi, ghi_chu_chung: e.target.value}}})} />
-                    </div>
-
-                    <div>
-                        <label className={labelClass}>Quan hệ xã hội & Tư tưởng</label>
-                        <textarea disabled={isViewMode} className={inputClass} rows={2} placeholder="Quan hệ phức tạp, biểu hiện tư tưởng..." value={formData.lich_su_vi_pham.quan_he_xa_hoi} onChange={e => setFormData({...formData, lich_su_vi_pham: {...formData.lich_su_vi_pham, quan_he_xa_hoi: e.target.value}})} />
-                    </div>
-                </div>
-            </div>
-          </div>
-
-          {/* 9. YẾU TỐ NƯỚC NGOÀI */}
-          <div ref={el => sectionRefs.current[8] = el} className="mb-12 scroll-mt-6">
-            <h3 className={sectionTitleClass}><div className={sectionIconClass}><Globe size={18}/></div> Yếu tố nước ngoài</h3>
-            
-            {/* Lịch sử đi nước ngoài (Mới nâng cấp) */}
-            <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <div className="flex justify-between items-center mb-3">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input disabled={isViewMode} type="checkbox" className="w-4 h-4 accent-blue-600 rounded" checked={formData.yeu_to_nuoc_ngoai.da_di_nuoc_ngoai} onChange={e => setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, da_di_nuoc_ngoai: e.target.checked}})} />
-                        <span className="text-xs font-bold uppercase text-blue-700">Đã từng đi nước ngoài</span>
-                    </label>
-                    {formData.yeu_to_nuoc_ngoai.da_di_nuoc_ngoai && !isViewMode && (
-                        <button 
-                            onClick={() => setFormData({
-                                ...formData,
-                                yeu_to_nuoc_ngoai: {
-                                    ...formData.yeu_to_nuoc_ngoai,
-                                    lich_su_di_nuoc_ngoai: [...formData.yeu_to_nuoc_ngoai.lich_su_di_nuoc_ngoai, { nuoc: '', muc_dich: '', thoi_gian: '', vi_pham: '' }]
-                                }
-                            })}
-                            className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200 hover:bg-blue-100 flex items-center gap-1"
-                        >
-                            <Plus size={10}/> Thêm chuyến đi
-                        </button>
-                    )}
-                </div>
-
-                {formData.yeu_to_nuoc_ngoai.da_di_nuoc_ngoai && (
-                    <div className="space-y-3 animate-fade-in">
-                        {formData.yeu_to_nuoc_ngoai.lich_su_di_nuoc_ngoai.map((trip: any, idx: number) => (
-                            <div key={idx} className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
-                                <div className="grid grid-cols-12 gap-3 items-center mb-2">
-                                    <div className="col-span-3">
-                                        <input disabled={isViewMode} type="text" className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold" placeholder="Tên nước..." value={trip.nuoc} onChange={e => {
-                                            const newTrips = [...formData.yeu_to_nuoc_ngoai.lich_su_di_nuoc_ngoai];
-                                            newTrips[idx].nuoc = e.target.value;
-                                            setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, lich_su_di_nuoc_ngoai: newTrips}});
-                                        }} />
-                                    </div>
-                                    <div className="col-span-4">
-                                        <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs" placeholder="Mục đích..." value={trip.muc_dich} onChange={e => {
-                                            const newTrips = [...formData.yeu_to_nuoc_ngoai.lich_su_di_nuoc_ngoai];
-                                            newTrips[idx].muc_dich = e.target.value;
-                                            setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, lich_su_di_nuoc_ngoai: newTrips}});
-                                        }} />
-                                    </div>
-                                    <div className="col-span-4">
-                                        <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs" placeholder="Thời gian (Từ...đến)..." value={trip.thoi_gian} onChange={e => {
-                                            const newTrips = [...formData.yeu_to_nuoc_ngoai.lich_su_di_nuoc_ngoai];
-                                            newTrips[idx].thoi_gian = e.target.value;
-                                            setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, lich_su_di_nuoc_ngoai: newTrips}});
-                                        }} />
-                                    </div>
-                                    {!isViewMode && (
-                                        <div className="col-span-1 text-center">
-                                            <button onClick={() => {
-                                                const newTrips = formData.yeu_to_nuoc_ngoai.lich_su_di_nuoc_ngoai.filter((_:any, i:number) => i !== idx);
-                                                setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, lich_su_di_nuoc_ngoai: newTrips}});
-                                            }} className="text-slate-400 hover:text-red-500"><Trash2 size={14}/></button>
-                                        </div>
-                                    )}
-                                </div>
-                                <input disabled={isViewMode} type="text" className="w-full bg-white border border-red-100 rounded px-2 py-1 text-xs text-red-600 placeholder:text-red-300" placeholder="Có vi phạm gì khi ở nước ngoài không? (Ghi rõ)..." value={trip.vi_pham} onChange={e => {
-                                    const newTrips = [...formData.yeu_to_nuoc_ngoai.lich_su_di_nuoc_ngoai];
-                                    newTrips[idx].vi_pham = e.target.value;
-                                    setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, lich_su_di_nuoc_ngoai: newTrips}});
-                                }} />
-                            </div>
-                        ))}
-                        {formData.yeu_to_nuoc_ngoai.lich_su_di_nuoc_ngoai.length === 0 && (
-                            <p className="text-xs text-slate-400 italic text-center py-2">Chưa có thông tin chuyến đi</p>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {/* Định cư & Hộ chiếu */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                    <h4 className="text-xs font-black uppercase text-slate-500 border-b border-slate-100 pb-2 mb-2 flex items-center gap-2"><Plane size={14}/> Thông tin Định cư</h4>
-                    <label className="flex items-center gap-2 cursor-pointer mb-2">
-                        <input disabled={isViewMode} type="checkbox" className="w-4 h-4 accent-amber-600" checked={formData.yeu_to_nuoc_ngoai.dinh_cu.dang_lam_thu_tuc} onChange={e => setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, dinh_cu: {...formData.yeu_to_nuoc_ngoai.dinh_cu, dang_lam_thu_tuc: e.target.checked}}})} />
-                        <span className="text-xs font-bold text-slate-700">Đang làm thủ tục xuất cảnh định cư</span>
-                    </label>
-                    {formData.yeu_to_nuoc_ngoai.dinh_cu.dang_lam_thu_tuc && (
-                        <div className="space-y-3 animate-fade-in pl-6">
-                            <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-sm" placeholder="Nước định cư..." value={formData.yeu_to_nuoc_ngoai.dinh_cu.nuoc_dinh_cu} onChange={e => setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, dinh_cu: {...formData.yeu_to_nuoc_ngoai.dinh_cu, nuoc_dinh_cu: e.target.value}}})} />
-                            <input disabled={isViewMode} type="text" className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-sm" placeholder="Người bảo lãnh (Họ tên, quan hệ)..." value={formData.yeu_to_nuoc_ngoai.dinh_cu.nguoi_bao_lanh} onChange={e => setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, dinh_cu: {...formData.yeu_to_nuoc_ngoai.dinh_cu, nguoi_bao_lanh: e.target.value}}})} />
-                        </div>
-                    )}
-                </div>
-
-                <div className="space-y-4">
-                    <h4 className="text-xs font-black uppercase text-slate-500 border-b border-slate-100 pb-2 mb-2 flex items-center gap-2"><CreditCard size={14}/> Hộ chiếu (Passport)</h4>
-                    <label className="flex items-center gap-2 cursor-pointer mb-2">
-                        <input disabled={isViewMode} type="checkbox" className="w-4 h-4 accent-green-600" checked={formData.yeu_to_nuoc_ngoai.ho_chieu.da_co} onChange={e => setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, ho_chieu: {...formData.yeu_to_nuoc_ngoai.ho_chieu, da_co: e.target.checked}}})} />
-                        <span className="text-xs font-bold text-slate-700">Đã được cấp Hộ chiếu</span>
-                    </label>
-                    {formData.yeu_to_nuoc_ngoai.ho_chieu.da_co && (
-                        <div className="space-y-3 animate-fade-in pl-6">
-                            <div className="grid grid-cols-2 gap-3">
-                                <input disabled={isViewMode} type="text" placeholder="Số hiệu" className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 text-xs" value={formData.yeu_to_nuoc_ngoai.ho_chieu.so_hieu} onChange={e => setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, ho_chieu: {...formData.yeu_to_nuoc_ngoai.ho_chieu, so_hieu: e.target.value}}})} />
-                                <VietnamDateInput disabled={isViewMode} placeholder="Ngày cấp" className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 text-xs" value={formData.yeu_to_nuoc_ngoai.ho_chieu.ngay_cap} onChange={(val: string) => setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, ho_chieu: {...formData.yeu_to_nuoc_ngoai.ho_chieu, ngay_cap: val}}})} />
-                            </div>
-                            <input disabled={isViewMode} type="text" placeholder="Nơi giữ hiện nay" className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 text-xs" value={formData.yeu_to_nuoc_ngoai.ho_chieu.noi_giu} onChange={e => setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, ho_chieu: {...formData.yeu_to_nuoc_ngoai.ho_chieu, noi_giu: e.target.value}}})} />
-                        </div>
-                    )}
-                </div>
-            </div>
-
-             <div className="mt-6 pt-4 border-t border-slate-100">
-                 <div className="flex justify-between items-center mb-2">
-                    <h4 className="text-xs font-black uppercase text-slate-500">Thân nhân ở nước ngoài</h4>
-                    {!isViewMode && <button onClick={() => setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, than_nhan: [...formData.yeu_to_nuoc_ngoai.than_nhan, { moi_quan_he: '', ho_ten: '', quoc_gia: '' }]}})} className="text-[10px] text-blue-600 font-bold hover:underline">+ THÊM</button>}
-                 </div>
-                 {formData.yeu_to_nuoc_ngoai.than_nhan.map((tn: any, idx: number) => (
-                     <div key={idx} className="flex gap-2 mb-2">
-                        <input disabled={isViewMode} type="text" placeholder="Quan hệ (Bố, mẹ...)" className={`${inputClass} !w-32`} value={tn.moi_quan_he} onChange={e => {
-                            const newTn = [...formData.yeu_to_nuoc_ngoai.than_nhan]; newTn[idx].moi_quan_he = e.target.value;
-                            setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, than_nhan: newTn}});
-                        }} />
-                        <input disabled={isViewMode} type="text" placeholder="Họ tên" className={inputClass} value={tn.ho_ten} onChange={e => {
-                            const newTn = [...formData.yeu_to_nuoc_ngoai.than_nhan]; newTn[idx].ho_ten = e.target.value;
-                            setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, than_nhan: newTn}});
-                        }} />
-                        <input disabled={isViewMode} type="text" placeholder="Quốc gia định cư" className={inputClass} value={tn.quoc_gia} onChange={e => {
-                            const newTn = [...formData.yeu_to_nuoc_ngoai.than_nhan]; newTn[idx].quoc_gia = e.target.value;
-                            setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, than_nhan: newTn}});
-                        }} />
-                         {!isViewMode && <button onClick={() => {
-                             const newTn = formData.yeu_to_nuoc_ngoai.than_nhan.filter((_:any, i:number) => i!==idx);
-                             setFormData({...formData, yeu_to_nuoc_ngoai: {...formData.yeu_to_nuoc_ngoai, than_nhan: newTn}});
-                         }} className="text-red-400"><X size={16}/></button>}
-                     </div>
-                 ))}
-             </div>
-          </div>
-          
-          {/* 10. Ý KIẾN & CAM ĐOAN */}
-          <div ref={el => sectionRefs.current[9] = el} className="mb-12 scroll-mt-6">
-            <h3 className={sectionTitleClass}><div className={sectionIconClass}><FileSignature size={18}/></div> Ý kiến & Cam đoan</h3>
-            <div className="space-y-6">
                 <div>
-                    <label className={labelClass}>Ý kiến / Nguyện vọng cá nhân</label>
-                    <textarea 
-                        disabled={isViewMode} 
-                        className={inputClass} 
-                        rows={4} 
-                        placeholder="Trình bày nguyện vọng về công tác, gia đình..." 
-                        value={formData.y_kien_cam_doan.y_kien_nguyen_vong} 
-                        onChange={e => setFormData({...formData, y_kien_cam_doan: {...formData.y_kien_cam_doan, y_kien_nguyen_vong: e.target.value}})} 
-                    />
+                  <label className="block text-[10px] font-bold text-gray-600 mb-1">Cấp bậc</label>
+                  <select disabled={isViewMode} className={inputClassBold} value={formData.cap_bac || 'Binh nhì'} onChange={e => setFormData({...formData, cap_bac: e.target.value})}>
+                    <option>Binh nhì</option><option>Binh nhất</option><option>Hạ sĩ</option><option>Trung sĩ</option><option>Thượng sĩ</option><option>Thiếu úy</option><option>Trung úy</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-600 mb-1">Chức vụ</label>
+                  <input disabled={isViewMode} type="text" className={inputClass} value={formData.chuc_vu || ''} onChange={e => setFormData({...formData, chuc_vu: e.target.value})} />
                 </div>
                 
+                {/* --- DATE INPUTS ĐỒNG BỘ --- */}
                 <div>
-                    <label className={labelClass}>Lời cam đoan</label>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <textarea 
-                            disabled={isViewMode} 
-                            className="w-full bg-transparent border-none outline-none text-sm text-slate-700 italic" 
-                            rows={3} 
-                            value={formData.y_kien_cam_doan.cam_doan} 
-                            onChange={e => setFormData({...formData, y_kien_cam_doan: {...formData.y_kien_cam_doan, cam_doan: e.target.value}})} 
-                        />
-                    </div>
+                  <label className="block text-[10px] font-bold text-gray-600 mb-1">Ngày nhập ngũ</label>
+                  <VietnamDateInput 
+                    disabled={isViewMode}
+                    className={inputClass} 
+                    value={formData.nhap_ngu_ngay} 
+                    onChange={iso => setFormData({...formData, nhap_ngu_ngay: iso})} 
+                  />
                 </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-600 mb-1">Ngày vào Đoàn</label>
+                  <VietnamDateInput 
+                    disabled={isViewMode}
+                    className={inputClass} 
+                    value={formData.ngay_vao_doan} 
+                    onChange={iso => setFormData({...formData, ngay_vao_doan: iso})} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-600 mb-1">Ngày vào Đảng</label>
+                  <VietnamDateInput 
+                    disabled={isViewMode}
+                    className={inputClass} 
+                    value={formData.vao_dang_ngay} 
+                    onChange={iso => setFormData({...formData, vao_dang_ngay: iso})} 
+                  />
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* --- TAB 2: TIỂU SỬ & MXH --- */}
+        {activeTab === 2 && (
+          <div className="animate-fade-in space-y-10">
+            <section>
+              <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">
+                Quá trình từ 10 tuổi đến nhập ngũ
+              </h3>
+              <div className="border border-gray-100 rounded-lg overflow-hidden shadow-sm mb-4">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-gray-500 font-bold border-b">
+                    <tr>
+                      <th className="p-3 text-left w-1/4 border-r">Thời gian</th>
+                      <th className="p-3 text-left w-2/4 border-r">Làm gì? Chức vụ?</th>
+                      <th className="p-3 text-left w-1/4 border-r">Ở đâu?</th>
+                      {!isViewMode && <th className="w-10"></th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {(formData.tieu_su_ban_than || []).map((row, idx) => (
+                      <tr key={idx}>
+                        <td className="p-2 border-r"><input disabled={isViewMode} type="text" className={inputClass} value={row.time} onChange={e => {
+                          const updated = [...(formData.tieu_su_ban_than || [])]; updated[idx].time = e.target.value; updateNested('tieu_su_ban_than', updated);
+                        }} /></td>
+                        <td className="p-2 border-r"><input disabled={isViewMode} type="text" className={inputClass} value={row.job} onChange={e => {
+                          const updated = [...(formData.tieu_su_ban_than || [])]; updated[idx].job = e.target.value; updateNested('tieu_su_ban_than', updated);
+                        }} /></td>
+                        <td className="p-2 border-r"><input disabled={isViewMode} type="text" className={inputClass} value={row.place} onChange={e => {
+                          const updated = [...(formData.tieu_su_ban_than || [])]; updated[idx].place = e.target.value; updateNested('tieu_su_ban_than', updated);
+                        }} /></td>
+                        {!isViewMode && (
+                            <td className="p-2 text-center"><button onClick={() => removeRow('tieu_su_ban_than', idx)} className="text-red-400 hover:text-red-600"><Trash2 size={14}/></button></td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!isViewMode && (
+                  <button onClick={() => addRow('tieu_su_ban_than', {time: '', job: '', place: ''})} className="px-4 py-2 border-2 border-blue-50 text-blue-600 rounded-lg text-[10px] font-bold uppercase hover:bg-blue-50 transition-all flex items-center gap-1"><Plus size={14}/> Thêm mốc thời gian</button>
+              )}
+            </section>
+
+            <section>
+              <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Mạng Xã Hội</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {(['facebook', 'zalo', 'tiktok'] as const).map(type => (
+                  <div key={type} className="bg-gray-50/50 p-5 rounded-xl border border-gray-100">
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-[11px] font-bold text-gray-700 uppercase flex items-center gap-2">{type}</span>
+                    </div>
+                    <div className="space-y-3">
+                      {(formData.mang_xa_hoi?.[type] || []).map((acc, idx) => (
+                        <div key={idx} className="flex gap-2 group animate-fade-in">
+                          <input disabled={isViewMode} type="text" placeholder="Tên TK/ID" className={inputClass + " text-[10px]"} value={acc.name} onChange={e => {
+                            const currentList = [...(formData.mang_xa_hoi?.[type] || [])];
+                            currentList[idx] = { ...currentList[idx], name: e.target.value };
+                            updateNested(`mang_xa_hoi.${type}`, currentList);
+                          }} />
+                          <input disabled={isViewMode} type="text" placeholder="SĐT ĐK" className={inputClass + " text-[10px]"} value={acc.phone} onChange={e => {
+                            const currentList = [...(formData.mang_xa_hoi?.[type] || [])];
+                            currentList[idx] = { ...currentList[idx], phone: e.target.value };
+                            updateNested(`mang_xa_hoi.${type}`, currentList);
+                          }} />
+                          {!isViewMode && (
+                              <button onClick={() => {
+                                const currentList = [...(formData.mang_xa_hoi?.[type] || [])];
+                                currentList.splice(idx, 1);
+                                updateNested(`mang_xa_hoi.${type}`, currentList);
+                              }} className="text-red-400 hover:text-red-600 transition-colors"><X size={14}/></button>
+                          )}
+                        </div>
+                      ))}
+                      {!isViewMode && (
+                          <button onClick={() => {
+                            const current = formData.mang_xa_hoi?.[type] || [];
+                            updateNested(`mang_xa_hoi.${type}`, [...current, {name: '', phone: ''}]);
+                          }} className="w-full py-2 border border-blue-200 rounded-lg text-blue-600 text-[10px] font-bold uppercase hover:bg-blue-50 transition-all">Thêm tài khoản</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* --- TAB 3: GIA ĐÌNH & HÔN NHÂN --- */}
+        {activeTab === 3 && (
+          <div className="animate-fade-in space-y-10">
+            <section>
+              <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Hoàn cảnh sống</h3>
+              <div className="bg-gray-50/50 p-6 rounded-2xl border border-gray-100 space-y-6">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase mb-3">Sống chung với ai?</label>
+                  <div className="flex gap-8">
+                    {['Bố', 'Mẹ', 'Người nuôi dưỡng khác'].map(val => (
+                      <label key={val} className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                        <input disabled={isViewMode} type="checkbox" checked={(formData.hoan_canh_song?.song_chung_voi || '').includes(val)} onChange={e => {
+                          let current = formData.hoan_canh_song?.song_chung_voi || '';
+                          if (e.target.checked) current = current ? current + ', ' + val : val;
+                          else current = current.split(', ').filter(v => v !== val).join(', ');
+                          updateNested('hoan_canh_song.song_chung_voi', current);
+                        }} className="w-4 h-4 rounded border-gray-300 accent-[#14452F]" />
+                        {val}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase mb-2">Lý do không sống chung với bố, mẹ (nếu có)</label>
+                  <textarea disabled={isViewMode} className={inputClass} rows={2} value={formData.hoan_canh_song?.ly_do_khong_song_cung_bo_me || ''} onChange={e => updateNested('hoan_canh_song.ly_do_khong_song_cung_bo_me', e.target.value)} />
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Chi tiết thân nhân</h3>
+              <div className="border border-gray-100 rounded-lg overflow-hidden shadow-sm mb-4">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-gray-500 font-bold border-b">
+                    <tr>
+                      <th className="p-3 text-left w-24 border-r">Quan hệ</th>
+                      <th className="p-3 text-left w-1/5 border-r">Họ tên</th>
+                      <th className="p-3 text-left w-24 border-r">Năm sinh</th>
+                      <th className="p-3 text-left w-1/5 border-r">Nghề nghiệp</th>
+                      <th className="p-3 text-left w-1/4 border-r">Quê quán / Nơi ở</th>
+                      <th className="p-3 text-left w-32 border-r">SĐT</th>
+                      {!isViewMode && <th className="w-10"></th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {(formData.quan_he_gia_dinh?.cha_me_anh_em || []).map((f, idx) => (
+                      <tr key={idx}>
+                        <td className="p-2 border-r">
+                          <select disabled={isViewMode} className={inputClass} value={f.quan_he} onChange={e => {
+                            const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], quan_he: e.target.value }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                          }}>
+                            <option>Bố</option><option>Mẹ</option><option>Vợ</option><option>Con</option><option>Anh</option><option>Chị</option><option>Em</option><option>Ông</option><option>Bà</option><option>Bạn</option>
+                          </select>
+                        </td>
+                        <td className="p-2 border-r"><input disabled={isViewMode} type="text" className={inputClassBold + " uppercase"} value={f.ho_ten} onChange={e => {
+                          const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], ho_ten: e.target.value.toUpperCase() }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                        }} /></td>
+                        <td className="p-2 border-r"><input disabled={isViewMode} type="text" className={inputClass + " text-center"} value={f.nam_sinh} onChange={e => {
+                          const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], nam_sinh: e.target.value }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                        }} /></td>
+                        <td className="p-2 border-r"><input disabled={isViewMode} type="text" className={inputClass} value={f.nghe_nghiep} onChange={e => {
+                          const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], nghe_nghiep: e.target.value }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                        }} /></td>
+                        <td className="p-2 border-r"><input disabled={isViewMode} type="text" className={inputClass} value={f.cho_o} onChange={e => {
+                          const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], cho_o: e.target.value }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                        }} /></td>
+                        <td className="p-2 border-r"><input disabled={isViewMode} type="text" className={inputClass} value={f.sdt} onChange={e => {
+                          const updated = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; updated[idx] = { ...updated[idx], sdt: e.target.value }; updateNested('quan_he_gia_dinh.cha_me_anh_em', updated);
+                        }} /></td>
+                        {!isViewMode && (
+                            <td className="p-2 text-center"><button onClick={() => removeRow('quan_he_gia_dinh.cha_me_anh_em', idx)} className="text-red-400 hover:text-red-600 transition-all"><Trash2 size={14}/></button></td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!isViewMode && (
+                  <button onClick={() => addRow('quan_he_gia_dinh.cha_me_anh_em', {quan_he: 'Bố', ho_ten: '', nam_sinh: '', nghe_nghiep: '', cho_o: '', sdt: ''})} className="px-5 py-2.5 border-2 border-green-50 text-green-700 rounded-lg text-[10px] font-bold uppercase hover:bg-green-50 transition-all flex items-center gap-1"><Plus size={14}/> Thêm người thân</button>
+              )}
+            </section>
+          </div>
+        )}
+
+        {/* --- TAB 4: YẾU TỐ NƯỚC NGOÀI --- */}
+        {activeTab === 4 && (
+          <div className="animate-fade-in space-y-10">
+            <section>
+              <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Quan hệ & Đi nước ngoài</h3>
+              <div className="space-y-8">
+                {/* Foreign Relatives */}
+                <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase mb-4">Có quan hệ với ai ở nước ngoài không?</label>
+                  <div className="flex gap-8 mb-4">
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!(formData.yeu_to_nuoc_ngoai?.than_nhan || []).length} onChange={() => updateNested('yeu_to_nuoc_ngoai.than_nhan', [])} className="w-4 h-4 accent-[#14452F]" /> Không</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!!(formData.yeu_to_nuoc_ngoai?.than_nhan || []).length} onChange={() => { if(!formData.yeu_to_nuoc_ngoai?.than_nhan?.length) addRow('yeu_to_nuoc_ngoai.than_nhan', {ten: '', qh: '', nuoc: ''}) }} className="w-4 h-4 accent-[#14452F]" /> Có</label>
+                  </div>
+                  
+                  {(formData.yeu_to_nuoc_ngoai?.than_nhan || []).map((t: any, idx: number) => (
+                    <div key={idx} className="flex gap-4 p-3 bg-gray-50 rounded-lg animate-fade-in mb-2">
+                        <input disabled={isViewMode} type="text" placeholder="Họ tên" className={inputClass} value={t.ten} onChange={e => {
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.than_nhan || [])]; updated[idx] = { ...updated[idx], ten: e.target.value }; updateNested('yeu_to_nuoc_ngoai.than_nhan', updated);
+                        }} />
+                        <input disabled={isViewMode} type="text" placeholder="Quan hệ" className="w-1/4 p-2 bg-white border border-gray-200 rounded text-xs disabled:bg-gray-50 disabled:text-black" value={t.qh} onChange={e => {
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.than_nhan || [])]; updated[idx] = { ...updated[idx], qh: e.target.value }; updateNested('yeu_to_nuoc_ngoai.than_nhan', updated);
+                        }} />
+                        <input disabled={isViewMode} type="text" placeholder="Nước nào" className="w-1/4 p-2 bg-white border border-gray-200 rounded text-xs disabled:bg-gray-50 disabled:text-black" value={t.nuoc} onChange={e => {
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.than_nhan || [])]; updated[idx] = { ...updated[idx], nuoc: e.target.value }; updateNested('yeu_to_nuoc_ngoai.than_nhan', updated);
+                        }} />
+                        {!isViewMode && <button onClick={() => removeRow('yeu_to_nuoc_ngoai.than_nhan', idx)} className="text-red-400"><X size={14}/></button>}
+                    </div>
+                  ))}
+                  {!!(formData.yeu_to_nuoc_ngoai?.than_nhan || []).length && !isViewMode && (
+                    <button onClick={() => addRow('yeu_to_nuoc_ngoai.than_nhan', {ten: '', qh: '', nuoc: ''})} className="px-4 py-2 bg-gray-600 text-white rounded text-[10px] font-bold mt-2">Thêm người (Ai, Quan hệ, Nước nào)</button>
+                  )}
+                </div>
+
+                {/* Travel History */}
+                <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase mb-4">Đã từng đi nước ngoài chưa?</label>
+                  <div className="flex gap-8 mb-4">
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || []).length} onChange={() => updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', [])} className="w-4 h-4 accent-[#14452F]" /> Chưa đi</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!!(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || []).length} onChange={() => { if(!formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length) addRow('yeu_to_nuoc_ngoai.di_nuoc_ngoai', {nuoc: '', muc_dich: '', thoi_gian: ''}) }} className="w-4 h-4 accent-[#14452F]" /> Đã đi</label>
+                  </div>
+                   
+                  {(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || []).map((d: any, idx: number) => (
+                    <div key={idx} className="flex gap-4 p-3 bg-gray-50 rounded-lg animate-fade-in mb-2">
+                        <input disabled={isViewMode} type="text" placeholder="Nước nào" className="w-1/3 p-2 bg-white border border-gray-200 rounded text-xs disabled:bg-gray-50 disabled:text-black" value={d.nuoc} onChange={e => {
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])]; updated[idx] = { ...updated[idx], nuoc: e.target.value }; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', updated);
+                        }} />
+                        <input disabled={isViewMode} type="text" placeholder="Mục đích" className="w-1/3 p-2 bg-white border border-gray-200 rounded text-xs disabled:bg-gray-50 disabled:text-black" value={d.muc_dich} onChange={e => {
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])]; updated[idx] = { ...updated[idx], muc_dich: e.target.value }; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', updated);
+                        }} />
+                        <input disabled={isViewMode} type="text" placeholder="Thời gian" className="w-1/3 p-2 bg-white border border-gray-200 rounded text-xs disabled:bg-gray-50 disabled:text-black" value={d.thoi_gian} onChange={e => {
+                            const updated = [...(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])]; updated[idx] = { ...updated[idx], thoi_gian: e.target.value }; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', updated);
+                        }} />
+                        {!isViewMode && <button onClick={() => removeRow('yeu_to_nuoc_ngoai.di_nuoc_ngoai', idx)} className="text-red-400"><X size={14}/></button>}
+                    </div>
+                  ))}
+                  {!!(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || []).length && (
+                    <div className="space-y-4 mt-2">
+                        {!isViewMode && <button onClick={() => addRow('yeu_to_nuoc_ngoai.di_nuoc_ngoai', {nuoc: '', muc_dich: '', thoi_gian: ''})} className="px-4 py-2 bg-gray-600 text-white rounded text-[10px] font-bold">Thêm lịch sử</button>}
+                        <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+                            <label className="block text-[11px] font-bold text-red-600 uppercase mb-2">Có vi phạm gì khi đang ở nước ngoài không?</label>
+                            <textarea disabled={isViewMode} className={inputClass} rows={2} placeholder="Nếu có ghi rõ..." value={formData.vi_pham_nuoc_ngoai || ''} onChange={e => setFormData({...formData, vi_pham_nuoc_ngoai: e.target.value})} />
+                        </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-8">
+                  <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                    <label className="block text-[11px] font-bold text-gray-700 uppercase mb-4">Đã có hộ chiếu chưa?</label>
+                    <div className="flex gap-8">
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!formData.yeu_to_nuoc_ngoai?.ho_chieu?.da_co} onChange={() => updateNested('yeu_to_nuoc_ngoai.ho_chieu.da_co', false)} className="w-4 h-4 accent-[#14452F]" /> Chưa</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!!formData.yeu_to_nuoc_ngoai?.ho_chieu?.da_co} onChange={() => updateNested('yeu_to_nuoc_ngoai.ho_chieu.da_co', true)} className="w-4 h-4 accent-[#14452F]" /> Đã có</label>
+                    </div>
+                    
+                    {formData.yeu_to_nuoc_ngoai?.ho_chieu?.da_co && (
+                        <div className="mt-4 animate-fade-in">
+                            <label className="block text-[10px] font-bold text-gray-500 mb-1">Dự định đi nước nào?</label>
+                            <input disabled={isViewMode} type="text" className={inputClass} value={formData.yeu_to_nuoc_ngoai?.ho_chieu?.du_dinh_nuoc || ''} onChange={e => updateNested('yeu_to_nuoc_ngoai.ho_chieu.du_dinh_nuoc', e.target.value)} />
+                        </div>
+                    )}
+                  </div>
+                  <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                    <label className="block text-[11px] font-bold text-gray-700 uppercase mb-4 leading-relaxed">Bản thân đã hoặc đang làm thủ tục xuất cảnh định cư?</label>
+                    <div className="flex gap-8">
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.dang_lam_thu_tuc} onChange={() => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.dang_lam_thu_tuc', false)} className="w-4 h-4 accent-[#14452F]" /> Không</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!!formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.dang_lam_thu_tuc} onChange={() => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.dang_lam_thu_tuc', true)} className="w-4 h-4 accent-[#14452F]" /> Có</label>
+                    </div>
+                    
+                    {formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.dang_lam_thu_tuc && (
+                        <div className="space-y-3 mt-4 animate-fade-in">
+                            <input disabled={isViewMode} type="text" placeholder="Nước định cư" className={inputClass} value={formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.nuoc || ''} onChange={e => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.nuoc', e.target.value)} />
+                            <input disabled={isViewMode} type="text" placeholder="Người bảo lãnh" className={inputClass} value={formData.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.nguoi_bao_lanh || ''} onChange={e => updateNested('yeu_to_nuoc_ngoai.xuat_canh_dinh_cu.nguoi_bao_lanh', e.target.value)} />
+                        </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* --- TAB 5: LỊCH SỬ & TỆ NẠN --- */}
+        {activeTab === 5 && (
+          <div className="animate-fade-in space-y-8">
+            <h3 className="flex items-center gap-2 text-red-700 font-black uppercase text-xs mb-6">Dữ liệu Bảo Mật & Vi Phạm</h3>
+            <div className="space-y-6">
+              {/* Local Violation */}
+              <div className="p-6 bg-white border-l-4 border-red-500 rounded-xl shadow-sm space-y-6">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-[11px] font-black text-red-800 uppercase">1. Vi phạm tại địa phương</h4>
+                  <div className="flex gap-6">
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!formData.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong} onChange={() => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.co_khong', false)} className="accent-red-600" /> Không</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!!formData.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong} onChange={() => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.co_khong', true)} className="accent-red-600" /> Có</label>
+                  </div>
+                </div>
+                {formData.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong && (
+                  <div className="p-5 bg-gray-50/50 rounded-xl space-y-4">
+                    <textarea disabled={isViewMode} className={inputClass} rows={2} placeholder="Nội dung chi tiết..." value={formData.lich_su_vi_pham.vi_pham_dia_phuong.noi_dung || ''} onChange={e => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.noi_dung', e.target.value)} />
+                    <textarea disabled={isViewMode} className={inputClass} rows={1} placeholder="Kết quả giải quyết..." value={formData.lich_su_vi_pham.vi_pham_dia_phuong.ket_qua || ''} onChange={e => updateNested('lich_su_vi_pham.vi_pham_dia_phuong.ket_qua', e.target.value)} />
+                  </div>
+                )}
+              </div>
+
+              {/* Gambling */}
+              <div className="p-6 bg-white border-l-4 border-red-500 rounded-xl shadow-sm space-y-6">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-[11px] font-black text-red-800 uppercase">2. Tham gia đánh bạc / Cá độ</h4>
+                  <div className="flex gap-6">
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!formData.lich_su_vi_pham?.danh_bac?.co_khong} onChange={() => updateNested('lich_su_vi_pham.danh_bac.co_khong', false)} className="accent-red-600" /> Chưa từng</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!!formData.lich_su_vi_pham?.danh_bac?.co_khong} onChange={() => updateNested('lich_su_vi_pham.danh_bac.co_khong', true)} className="accent-red-600" /> Đã từng tham gia</label>
+                  </div>
+                </div>
+                {formData.lich_su_vi_pham?.danh_bac?.co_khong && (
+                  <div className="p-5 bg-gray-50/50 rounded-xl grid grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Hình thức chơi</label>
+                      <input disabled={isViewMode} type="text" className={inputClass} placeholder="VD: Lô đề, bóng đá, xóc đĩa..." value={formData.lich_su_vi_pham.danh_bac.hinh_thuc || ''} onChange={e => updateNested('lich_su_vi_pham.danh_bac.hinh_thuc', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Chơi với ai?</label>
+                      <input disabled={isViewMode} type="text" className={inputClass} placeholder="VD: Bạn bè xã hội, người lạ..." value={formData.lich_su_vi_pham.danh_bac.doi_tuong || ''} onChange={e => updateNested('lich_su_vi_pham.danh_bac.doi_tuong', e.target.value)} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Địa điểm / Thời gian</label>
+                      <input disabled={isViewMode} type="text" className={inputClass} placeholder="Chơi ở đâu? Khi nào?" value={formData.lich_su_vi_pham.danh_bac.dia_diem || ''} onChange={e => updateNested('lich_su_vi_pham.danh_bac.dia_diem', e.target.value)} />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Drugs */}
+              <div className="p-6 bg-white border-l-4 border-red-500 rounded-xl shadow-sm space-y-6">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-[11px] font-black text-red-800 uppercase">3. Sử dụng Ma túy / Chất gây nghiện</h4>
+                  <div className="flex gap-6">
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!formData.lich_su_vi_pham?.ma_tuy?.co_khong} onChange={() => updateNested('lich_su_vi_pham.ma_tuy.co_khong', false)} className="accent-red-600" /> Chưa từng</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!!formData.lich_su_vi_pham?.ma_tuy?.co_khong} onChange={() => updateNested('lich_su_vi_pham.ma_tuy.co_khong', true)} className="accent-red-600" /> Đã từng sử dụng</label>
+                  </div>
+                </div>
+                {formData.lich_su_vi_pham?.ma_tuy?.co_khong && (
+                  <div className="p-5 bg-gray-50/50 rounded-xl grid grid-cols-3 gap-6">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Thời gian (từ khi nào?)</label>
+                      <input disabled={isViewMode} type="text" className={inputClass} value={formData.lich_su_vi_pham.ma_tuy.thoi_gian || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.thoi_gian', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Loại chất</label>
+                      <input disabled={isViewMode} type="text" className={inputClass} placeholder="Cỏ, Ke, Đá..." value={formData.lich_su_vi_pham.ma_tuy.loai || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.loai', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Số lần sử dụng</label>
+                      <input disabled={isViewMode} type="text" className={inputClass} value={formData.lich_su_vi_pham.ma_tuy.so_lan || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.so_lan', e.target.value)} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Sử dụng với ai?</label>
+                      <input disabled={isViewMode} type="text" className={inputClass} value={formData.lich_su_vi_pham.ma_tuy.doi_tuong || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.doi_tuong', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Đã bị xử lý chưa?</label>
+                      <input disabled={isViewMode} type="text" className={inputClass} placeholder="Có/Không" value={formData.lich_su_vi_pham.ma_tuy.xu_ly || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.xu_ly', e.target.value)} />
+                    </div>
+                    <div className="col-span-3">
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Hình thức xử lý (nếu có) & Chi tiết</label>
+                      <textarea disabled={isViewMode} className={inputClass} rows={2} placeholder="Ghi rõ hình thức xử lý..." value={formData.lich_su_vi_pham.ma_tuy.hinh_thuc_xu_ly || ''} onChange={e => updateNested('lich_su_vi_pham.ma_tuy.hinh_thuc_xu_ly', e.target.value)} />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+        )}
 
-        </div>
+        {/* --- TAB 6: TÀI CHÍNH & SỨC KHỎE --- */}
+        {activeTab === 6 && (
+          <div className="animate-fade-in space-y-10">
+            <section>
+              <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Tình hình tài chính</h3>
+              <div className="space-y-6">
+                <div className="p-6 bg-white border border-yellow-50 rounded-2xl shadow-sm space-y-6 bg-gradient-to-br from-yellow-50/30 to-transparent">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-[11px] font-black text-yellow-800 uppercase">1. Vay nợ (Cá nhân / Tổ chức / Tín dụng đen...)</h4>
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!formData.tai_chinh_suc_khoe?.vay_no?.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.vay_no.co_khong', false)} className="accent-yellow-700" /> Không</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!!formData.tai_chinh_suc_khoe?.vay_no?.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.vay_no.co_khong', true)} className="accent-yellow-700" /> Có</label>
+                    </div>
+                  </div>
+                  {formData.tai_chinh_suc_khoe?.vay_no?.co_khong && (
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-4 p-5 bg-white/60 border border-yellow-100 rounded-xl">
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-600 mb-1">Ai đứng tên vay?</label>
+                        <input disabled={isViewMode} type="text" className={inputClass} placeholder="Bản thân / Vợ / Bố mẹ..." value={formData.tai_chinh_suc_khoe.vay_no.nguoi_dung_ten || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.nguoi_dung_ten', e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-600 mb-1">Ai là người trả nợ?</label>
+                        <input disabled={isViewMode} type="text" className={inputClass} placeholder="Người chịu trách nhiệm trả" value={formData.tai_chinh_suc_khoe.vay_no.nguoi_tra || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.nguoi_tra', e.target.value)} />
+                      </div>
+                      <div className="col-span-1">
+                        <label className="block text-[10px] font-bold text-gray-600 mb-1">Vay của ai / Tổ chức nào?</label>
+                        <input disabled={isViewMode} type="text" className={inputClass} value={formData.tai_chinh_suc_khoe.vay_no.ai_vay || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.ai_vay', e.target.value)} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-600 mb-1">Số tiền (VNĐ)</label>
+                          <input disabled={isViewMode} type="text" className={inputClassBold} value={formData.tai_chinh_suc_khoe.vay_no.so_tien || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.so_tien', e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-600 mb-1">Hạn trả</label>
+                          <input disabled={isViewMode} type="text" className={inputClass} value={formData.tai_chinh_suc_khoe.vay_no.han_tra || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.han_tra', e.target.value)} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-600 mb-1">Hình thức vay</label>
+                        <input disabled={isViewMode} type="text" className={inputClass} placeholder="Tín chấp / Thế chấp / App..." value={formData.tai_chinh_suc_khoe.vay_no.hinh_thuc || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.hinh_thuc', e.target.value)} />
+                      </div>
+                      <div className="flex items-center gap-3 pt-6">
+                        <input disabled={isViewMode} type="checkbox" checked={!!formData.tai_chinh_suc_khoe.vay_no.gia_dinh_biet} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.gia_dinh_biet', e.target.checked)} className="w-4 h-4 accent-yellow-700" />
+                        <label className="text-[10px] font-bold text-gray-700 uppercase">Gia đình đã biết chuyện vay nợ</label>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-[10px] font-bold text-gray-600 mb-1">Mục đích vay & Chi tiết khác</label>
+                        <textarea disabled={isViewMode} className={inputClass} rows={2} placeholder="Vay để làm gì? ..." value={formData.tai_chinh_suc_khoe.vay_no.muc_dich || ''} onChange={e => updateNested('tai_chinh_suc_khoe.vay_no.muc_dich', e.target.value)} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-[11px] font-black text-gray-800 uppercase">2. Kinh doanh & Bất động sản</h4>
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!formData.tai_chinh_suc_khoe?.kinh_doanh?.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.kinh_doanh.co_khong', false)} className="accent-[#14452F]" /> Không</label>
+                      <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!!formData.tai_chinh_suc_khoe?.kinh_doanh?.co_khong} onChange={() => updateNested('tai_chinh_suc_khoe.kinh_doanh.co_khong', true)} className="accent-[#14452F]" /> Có</label>
+                    </div>
+                  </div>
+                  {formData.tai_chinh_suc_khoe?.kinh_doanh?.co_khong && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase">Chi tiết đối tác & Địa chỉ kinh doanh</label>
+                      <textarea disabled={isViewMode} className={inputClass} rows={2} placeholder="Tên tổ chức/cá nhân, tên công ty, địa chỉ cụ thể..." value={formData.tai_chinh_suc_khoe.kinh_doanh.chi_tiet || ''} onChange={e => updateNested('tai_chinh_suc_khoe.kinh_doanh.chi_tiet', e.target.value)} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Sức khỏe</h3>
+              <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                <div className="flex justify-between items-center mb-4">
+                  <label className="text-[11px] font-bold text-gray-700 uppercase">Đã từng mắc Covid-19 chưa?</label>
+                  <div className="flex gap-6">
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!formData.tai_chinh_suc_khoe?.covid_ban_than?.da_mac} onChange={() => updateNested('tai_chinh_suc_khoe.covid_ban_than.da_mac', false)} className="accent-green-700" /> Không</label>
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input disabled={isViewMode} type="radio" checked={!!formData.tai_chinh_suc_khoe?.covid_ban_than?.da_mac} onChange={() => updateNested('tai_chinh_suc_khoe.covid_ban_than.da_mac', true)} className="accent-green-700" /> Có</label>
+                  </div>
+                </div>
+                {formData.tai_chinh_suc_khoe?.covid_ban_than?.da_mac && (
+                  <input disabled={isViewMode} type="text" placeholder="Thời gian mắc bệnh (Tháng/Năm)" className={inputClass} value={formData.tai_chinh_suc_khoe.covid_ban_than.thoi_gian || ''} onChange={e => updateNested('tai_chinh_suc_khoe.covid_ban_than.thoi_gian', e.target.value)} />
+                )}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* --- TAB 7: CAM KẾT & NGUYỆN VỌNG --- */}
+        {activeTab === 7 && (
+          <div className="animate-fade-in space-y-10 max-w-4xl mx-auto py-10">
+            <h3 className="flex items-center justify-center gap-2 text-[#14452F] font-black uppercase text-xl mb-12 tracking-widest">
+              Ý kiến, Nguyện vọng & Cam đoan
+            </h3>
+            
+            <div className="space-y-12">
+              <div className="space-y-4">
+                <h4 className="text-sm font-black text-gray-800 uppercase tracking-widest border-b-2 border-gray-100 pb-2">II. Ý KIẾN VÀ NGUYỆN VỌNG CỦA BẢN THÂN</h4>
+                <p className="text-gray-500 text-[11px] font-medium leading-relaxed italic">Đồng chí có ý kiến, đề xuất hoặc hoàn cảnh đặc biệt nào cần đơn vị quan tâm giúp đỡ không?</p>
+                <textarea disabled={isViewMode} className="w-full p-8 bg-gray-50/50 border border-gray-200 rounded-[2.5rem] outline-none shadow-inner min-h-[300px] leading-relaxed text-sm focus:ring-4 ring-green-50 transition-all disabled:bg-gray-50 disabled:text-black" value={formData.y_kien_nguyen_vong || ''} onChange={e => setFormData({...formData, y_kien_nguyen_vong: e.target.value})} placeholder="Ghi rõ nội dung..." />
+              </div>
+              
+              <div className="space-y-6">
+                <h4 className="text-sm font-black text-red-700 uppercase tracking-widest text-center">III. CAM ĐOAN</h4>
+                <div className="py-10 px-2 bg-red-50/30 border-2 border-red-100 rounded-[2.5rem] italic text-[10px] md:text-[11px] text-red-900 text-center leading-relaxed font-bold shadow-sm whitespace-nowrap overflow-hidden text-ellipsis">
+                  "Tôi xin cam đoan những lời khai trên là đúng sự thật, nếu có gì sai trái tôi xin chịu hoàn toàn trách nhiệm trước pháp luật và kỷ luật Quân đội."
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- TAB 8: THÔNG TIN BỔ SUNG --- */}
+        {activeTab === 8 && (
+          <div className="animate-fade-in space-y-10">
+            <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Thông tin bổ sung</h3>
+            <div className="p-5 bg-white border border-gray-100 rounded-xl text-[11px] font-bold text-gray-500 mb-8 flex items-center gap-3 shadow-inner">
+               Các trường dữ liệu này được yêu cầu thêm bởi đơn vị.
+            </div>
+            {customFields.length === 0 ? (
+               <div className="py-20 text-center text-gray-300 font-bold uppercase text-xs tracking-widest border-4 border-dashed rounded-[3rem]">Không có thông tin bổ sung cho đơn vị này.</div>
+            ) : (
+               <div className="grid grid-cols-2 gap-8">
+                {customFields.map(f => (
+                  <div key={f.id} className="p-6 bg-gray-50 border border-gray-100 rounded-[2rem] shadow-sm">
+                    <label className="block text-[10px] font-black uppercase text-gray-400 mb-2">{f.display_name} {f.is_required && <span className="text-red-500">*</span>}</label>
+                    <input disabled={isViewMode} type="text" className={inputClassBold} value={formData.custom_data?.[f.field_key] || ''} onChange={e => setFormData({...formData, custom_data: {...formData.custom_data, [f.field_key]: e.target.value}})} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
-      <div className="p-6 bg-slate-50 border-t flex justify-end gap-4 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
-        <button onClick={onClose} className="px-8 py-3 bg-white text-slate-600 rounded-xl font-bold uppercase text-xs tracking-widest hover:bg-slate-100 transition-all border border-slate-200">{isViewMode ? 'Đóng' : 'Hủy bỏ'}</button>
+      {/* Footer Actions */}
+      <div className="p-6 bg-gray-50 border-t flex justify-end gap-4 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+        <button 
+          onClick={onClose} 
+          className="px-10 py-4 bg-gray-200 text-gray-800 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-gray-300 transition-all border border-gray-300"
+        >
+          {isViewMode ? 'Đóng' : 'Hủy bỏ'}
+        </button>
         {!isViewMode && (
-            <button onClick={handleSave} className="px-12 py-3 bg-green-700 text-white rounded-xl font-black uppercase text-xs tracking-widest shadow-xl shadow-green-200 hover:bg-green-800 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"><Save size={16} /> Lưu hồ sơ</button>
+            <button 
+              onClick={handleSave} 
+              className="px-16 py-4 bg-[#14452F] text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-[#1a5a3d] active:scale-95 transition-all"
+            >
+              Hoàn thành & Lưu
+            </button>
         )}
       </div>
-
-      <style>{` .scroll-mt-6 { scroll-margin-top: 1.5rem; } `}</style>
     </div>
   );
 };

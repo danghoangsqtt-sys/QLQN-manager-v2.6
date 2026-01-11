@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Unit, MilitaryPersonnel } from '../types.ts';
 import { db } from '../store.ts';
@@ -35,9 +36,7 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh, onViewDetailedLis
 
   useEffect(() => {
     const loadPersonnel = async () => {
-      // [ĐÃ SỬA LỖI] Truyền true (unlimited) để tải toàn bộ danh sách 
-      // cho việc tính toán thống kê chính xác
-      const data = await db.getPersonnel({}, true);
+      const data = await db.getPersonnel();
       setAllPersonnel(data);
     };
     loadPersonnel();

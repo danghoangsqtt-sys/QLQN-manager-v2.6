@@ -1,9 +1,17 @@
 import { Dexie, type Table } from 'dexie';
 import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomField } from './types';
-import { executePersonnelQuery, hasSecurityAlert, FilterCriteria } from './utils/personnelFilter';
 
-// Export lại FilterCriteria để Dashboard dùng
-export type { FilterCriteria };
+export interface FilterCriteria {
+  keyword: string;
+  unitId: string;
+  rank: string;
+  position: string;
+  political: 'all' | 'dang_vien' | 'quan_chung';
+  security: 'all' | 'vay_no' | 'vi_pham' | 'nuoc_ngoai' | 'canh_bao';
+  education: 'all' | 'dai_hoc_cao_dang' | 'duoi_dai_hoc';
+  marital: 'all' | 'da_vo' | 'chua_vo';
+  hasChildren: 'all' | 'co_con' | 'chua_con';
+}
 
 declare global {
   interface Window {
@@ -51,21 +59,10 @@ class Store {
   }
 
   async login(password: string): Promise<boolean> {
-    // Kiểm tra API Electron có tồn tại không
-    if (window.electronAPI) {
-        const res = await window.electronAPI.login(password);
-        if (res) this.log('INFO', 'Người dùng đăng nhập thành công.');
-        return res;
-    } 
-    
-    // Chỉ cho phép fallback 123456 khi đang ở chế độ DEV (localhost)
-    if (import.meta.env.DEV) {
-         console.warn("Đang dùng mật khẩu debug: 123456");
-         return password === '123456';
-    }
-
-    return false; // Chặn login nếu chạy trên web production mà không có Electron
-}
+    const res = window.electronAPI ? await window.electronAPI.login(password) : password === '123456';
+    if (res) this.log('INFO', 'Người dùng đăng nhập thành công.');
+    return res;
+  }
 
   async changePassword(password: string): Promise<boolean> {
     if (window.electronAPI && window.electronAPI.changePassword) {
@@ -74,9 +71,27 @@ class Store {
     return true;
   }
 
-  // Wrapper gọi hàm check an ninh (để giữ tương thích code cũ)
+  private async getAllChildUnitIds(unitId: string): Promise<string[]> {
+    const childUnits = await dbInstance.units.where('parentId').equals(unitId).toArray();
+    let ids = [unitId];
+    for (const unit of childUnits) {
+      const subIds = await this.getAllChildUnitIds(unit.id);
+      ids = [...ids, ...subIds];
+    }
+    return ids;
+  }
+
   public hasSecurityAlert(p: MilitaryPersonnel): boolean {
-    return hasSecurityAlert(p);
+    return (
+      !!p.tai_chinh_suc_khoe?.vay_no?.co_khong ||
+      !!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong ||
+      !!p.lich_su_vi_pham?.ma_tuy?.co_khong ||
+      !!p.lich_su_vi_pham?.danh_bac?.co_khong ||
+      (p.yeu_to_nuoc_ngoai?.than_nhan?.length || 0) > 0 ||
+      (p.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length || 0) > 0 ||
+      !!p.yeu_to_nuoc_ngoai?.ho_chieu?.da_co ||
+      !!p.vi_pham_nuoc_ngoai
+    );
   }
 
   // Hàm lấy chi tiết đầy đủ (dùng cho Edit/Print)
@@ -84,11 +99,61 @@ class Store {
     return await dbInstance.personnel.get(id);
   }
 
-  // [ĐÃ SỬA LỖI] Sử dụng logic từ file utils/personnelFilter
-  async getPersonnel(filters: Partial<FilterCriteria> = {}, unlimited: boolean = false): Promise<MilitaryPersonnel[]> {
-    // Lấy danh sách đơn vị để hỗ trợ lọc theo cây thư mục
-    const allUnits = await dbInstance.units.toArray();
-    return executePersonnelQuery(dbInstance.personnel, allUnits, filters, unlimited);
+  // [ĐÃ SỬA LỖI] Tối ưu hóa hiệu năng, thêm limit
+  async getPersonnel(filters: Partial<FilterCriteria> = {}): Promise<MilitaryPersonnel[]> {
+    let collection = dbInstance.personnel.toCollection();
+
+    if (filters.keyword) {
+      const k = filters.keyword.toLowerCase();
+      collection = collection.filter(p => 
+        (p.ho_ten || '').toLowerCase().includes(k) || 
+        (p.cccd || '').includes(k) || 
+        (p.sdt_rieng || '').includes(k)
+      );
+    }
+
+    if (filters.unitId && filters.unitId !== 'all') {
+      const allTargetIds = await this.getAllChildUnitIds(filters.unitId);
+      collection = collection.filter(p => allTargetIds.includes(p.don_vi_id));
+    }
+
+    if (filters.rank && filters.rank !== 'all') {
+      collection = collection.filter(p => p.cap_bac === filters.rank);
+    }
+
+    if (filters.political === 'dang_vien') {
+      collection = collection.filter(p => !!p.vao_dang_ngay);
+    } else if (filters.political === 'quan_chung') {
+      collection = collection.filter(p => !p.vao_dang_ngay);
+    }
+
+    if (filters.security === 'canh_bao') {
+        collection = collection.filter(p => this.hasSecurityAlert(p));
+    }
+
+    if (filters.education === 'dai_hoc_cao_dang') {
+      collection = collection.filter(p => {
+        const edu = (p.trinh_do_van_hoa || '').toLowerCase();
+        return edu.includes('đại học') || edu.includes('cao đẳng') || edu.includes('thạc sĩ');
+      });
+    }
+
+    // [THÊM] Bảo vệ hiệu năng: Nếu không lọc gì cả, giới hạn 200 bản ghi đầu tiên
+    // Giúp tránh treo máy nếu dữ liệu quá lớn
+    if (!filters.keyword && (!filters.unitId || filters.unitId === 'all') && !filters.rank && !filters.security) {
+        collection = collection.limit(200);
+    }
+
+    const resultArray = await collection.toArray();
+    
+    // Chỉ trả về ảnh Thumb cho danh sách để nhẹ RAM
+    const optimizedResult = resultArray.map(p => ({
+        ...p,
+        anh_dai_dien: p.anh_thumb || '', // Dùng ảnh nhỏ để hiển thị list
+        // Nếu không có thumb thì để trống, Dashboard sẽ hiện avatar chữ cái
+    }));
+
+    return optimizedResult.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
 
   async getDashboardStats() {
@@ -150,11 +215,8 @@ class Store {
 
   async deleteUnit(id: string) {
     this.log('WARN', `Bắt đầu xóa đơn vị ID: ${id}`);
-    // Logic xóa con đệ quy đơn giản
-    const toDelete = [id];
-    // (Nếu cần xóa đệ quy triệt để, sử dụng hàm getRecursiveUnitIds trong utils, 
-    // nhưng ở đây giữ logic đơn giản để tránh import vòng nếu chưa cần thiết)
-    await dbInstance.units.bulkDelete(toDelete);
+    const allChildIds = await this.getAllChildUnitIds(id);
+    await dbInstance.units.bulkDelete(allChildIds);
     return true;
   }
 
@@ -185,7 +247,6 @@ class Store {
     await this.saveSetting('app_shortcuts', DEFAULT_SHORTCUTS);
   }
 
-  // [ĐÃ SỬA LỖI] Lấy stats trực tiếp từ DB renderer thay vì gọi Main Process bị lỗi
   async getSystemStats(): Promise<any> {
     const pCount = await dbInstance.personnel.count();
     const uCount = await dbInstance.units.count();
@@ -241,6 +302,7 @@ class Store {
             return false;
         }
 
+        // FIX: Transaction restore an toàn
         await dbInstance.transaction('rw', dbInstance.personnel, dbInstance.units, dbInstance.settings, async () => {
             await dbInstance.personnel.clear();
             await dbInstance.units.clear();

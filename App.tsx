@@ -3,27 +3,22 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Dashboard from './components/Dashboard';
 import LoginScreen from './components/LoginScreen';
 
-// --- KHAI BÁO KIỂU DỮ LIỆU (TYPE DEFINITIONS) ---
-// Giúp TypeScript nhận diện API của Electron mà không báo lỗi
-declare global {
-  interface Window {
-    electronAPI: {
-      login: (password: string) => Promise<boolean>;
-      changePassword: (password: string) => Promise<boolean>;
-      updateFromFile: () => Promise<{ success: boolean; message: string }>;
-    };
-  }
-}
+// Truy cập API Electron đã được expose từ preload.js
+// @ts-ignore
+const electronAPI = window.electronAPI;
 
 const App: React.FC = () => {
-  // Trạng thái đăng nhập
+  // Trạng thái đăng nhập: Mặc định là false (Chưa đăng nhập)
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  // Trạng thái khởi tạo ứng dụng
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
+    // Giả lập quá trình kiểm tra session hoặc khởi tạo ban đầu
     const initApp = async () => {
-      // Tại đây có thể thêm logic kiểm tra token lưu trong localStorage nếu muốn tính năng "Ghi nhớ đăng nhập"
+      // Có thể thêm logic kiểm tra "Ghi nhớ đăng nhập" tại đây nếu cần
+      // Ví dụ: const savedToken = localStorage.getItem('token');
+      // if (savedToken) setIsAuthenticated(true);
+      
       setIsReady(true);
     };
     initApp();
@@ -37,27 +32,27 @@ const App: React.FC = () => {
     setIsAuthenticated(false);
   };
 
-  // Màn hình chờ khi ứng dụng đang khởi tạo
-  if (!isReady) return null;
+  if (!isReady) return null; // Hoặc return <LoadingSpinner />
 
   // 1. Nếu chưa đăng nhập -> Hiển thị màn hình LoginScreen
   if (!isAuthenticated) {
-    return <LoginScreen onLogin={handleLoginSuccess} />;
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
-  // 2. Nếu đã đăng nhập -> Hiển thị Dashboard
+  // 2. Nếu đã đăng nhập -> Hiển thị Dashboard (Giao diện chính)
   return (
     <HashRouter>
       <Routes>
+        {/* Route chính dẫn vào Dashboard */}
+        {/* Sử dụng @ts-ignore để tránh lỗi TypeScript nếu Dashboard chưa có prop onLogout */}
         <Route 
           path="/" 
           element={
-            // Sử dụng {...({} as any)} để truyền props mà không bị TypeScript báo lỗi 
-            // nếu Dashboard chưa định nghĩa interface cho onLogout.
-            <Dashboard {...({ onLogout: handleLogout } as any)} />
+            // @ts-ignore
+            <Dashboard onLogout={handleLogout} />
           } 
         />
-        {/* Các đường dẫn không tồn tại sẽ tự động quay về trang chủ */}
+        {/* Các đường dẫn lạ sẽ tự động quay về trang chủ */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>

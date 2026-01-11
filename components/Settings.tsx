@@ -19,7 +19,7 @@ const Settings: React.FC = () => {
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [isDiagnosticRunning, setIsDiagnosticRunning] = useState(false);
   const [diagnosticResult, setDiagnosticResult] = useState<any>(null);
-  const [appVersion] = useState("7.0.0");
+  const [appVersion] = useState("7.2.5-STABLE");
   
   // States for Update Modal
   const [showUpdateModal, setShowUpdateModal] = useState(false);

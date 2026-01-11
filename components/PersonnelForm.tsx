@@ -7,7 +7,7 @@ import {
   Save, User, Users, Heart, Globe, 
   FileText, Plane, DollarSign, Activity, BookOpen, 
   Facebook, MessageCircle, Share2, Phone, Home, Gavel,
-  Ruler, Scale, Stethoscope, Briefcase
+  Ruler, Scale, Stethoscope, Briefcase, Clock, GraduationCap, Award, Calendar
 } from 'lucide-react';
 import { createThumbnail } from '../utils/imageHelper';
 
@@ -18,16 +18,22 @@ interface PersonnelFormProps {
   isViewMode?: boolean; 
 }
 
-// --- DỮ LIỆU MẶC ĐỊNH (CẤU TRÚC ĐẦY ĐỦ KHỚP VỚI FILTER) ---
+// --- DỮ LIỆU MẶC ĐỊNH ---
 const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
   ho_ten: '', ten_khac: '', ngay_sinh: '', cccd: '', sdt_rieng: '',
   cap_bac: 'Binh nhì', chuc_vu: '', don_vi_id: '',
   nhap_ngu_ngay: '', ngay_vao_doan: '', vao_dang_ngay: '',
   ho_khau_thu_tru: '', noi_sinh: '', dan_toc: 'Kinh', ton_giao: 'Không',
-  trinh_do_van_hoa: '12/12', da_tot_nghiep: true, nang_khieu_so_truong: '',
+  
+  // @ts-ignore
+  que_quan: '', 
+  trinh_do_van_hoa: '12/12', 
+  da_tot_nghiep: true, 
+  nang_khieu_so_truong: '',
+  
   anh_dai_dien: '', anh_thumb: '',
   nghi_phep_thuc_te: 0,
-  nghi_phep_tham_chieu: 12,
+  nghi_phep_tham_chieu: 12, // Mặc định 12 ngày phép/năm
   
   tieu_su_ban_than: [{ time: '', job: '', place: '' }],
   mang_xa_hoi: { facebook: [], zalo: [], tiktok: [] },
@@ -67,9 +73,9 @@ const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
   
   tai_chinh_suc_khoe: { 
     vay_no: { co_khong: false, ai_vay: '', nguoi_dung_ten: '', so_tien: '', muc_dich: '', hinh_thuc: '', han_tra: '', gia_dinh_biet: false, nguoi_tra: '' },
+    // @ts-ignore
     kinh_doanh: { 
         co_khong: false, 
-        // @ts-ignore
         hinh_thuc: '', loai_hinh: '', von: '', dia_diem: '', doi_tac: '', sdt_doi_tac: '' 
     },
     covid_ban_than: { da_mac: false, thoi_gian: '' },
@@ -80,7 +86,8 @@ const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
   custom_data: {
     nguoi_bao_tin_khancap: '', 
     tinh_trang_hon_nhan: 'doc_than', 
-    co_nguoi_yeu: false 
+    co_nguoi_yeu: false,
+    trinh_do_chuyen_mon: 'Đại học'
   },
   y_kien_nguyen_vong: ''
 };
@@ -139,7 +146,18 @@ const VietnamDateInput: React.FC<{
           onChange={handleInputChange}
           onBlur={() => { if (!toIsoDate(displayValue) && displayValue) setDisplayValue(toDisplayDate(value)); }}
         />
-        <div onClick={() => !disabled && hiddenDateInputRef.current?.showPicker()} className={`absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-green-600 cursor-pointer ${disabled ? 'hidden' : ''}`}>
+        <div 
+          onClick={() => {
+            if (!disabled && hiddenDateInputRef.current) {
+              if (typeof hiddenDateInputRef.current.showPicker === 'function') {
+                hiddenDateInputRef.current.showPicker();
+              } else {
+                hiddenDateInputRef.current.focus(); 
+              }
+            }
+          }} 
+          className={`absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-green-600 cursor-pointer ${disabled ? 'hidden' : ''}`}
+        >
           <CalendarIcon size={16} />
         </div>
         <input ref={hiddenDateInputRef} type="date" className="absolute inset-0 opacity-0 pointer-events-none w-0 h-0" value={value || ''} onChange={(e) => { onChange(e.target.value); setDisplayValue(toDisplayDate(e.target.value)); }} tabIndex={-1} />
@@ -153,7 +171,7 @@ type ToastType = 'success' | 'error' | 'warning' | 'info';
 interface ToastMessage { id: number; type: ToastType; title: string; message: string; }
 
 const MilitaryToast: React.FC<{ toasts: ToastMessage[]; removeToast: (id: number) => void }> = ({ toasts, removeToast }) => (
-  <div className="absolute top-4 right-4 z-[300] flex flex-col gap-3 w-80 pointer-events-none">
+  <div className="absolute top-4 right-4 z-[2000] flex flex-col gap-3 w-80 pointer-events-none">
     {toasts.map((toast) => (
       <div key={toast.id} className={`pointer-events-auto relative overflow-hidden bg-white border-l-4 shadow-xl rounded-r-md transform transition-all duration-300 animate-slide-in ${toast.type === 'error' ? 'border-red-600' : toast.type === 'success' ? 'border-green-600' : 'border-blue-500'}`}>
         <div className="p-4 flex gap-3">
@@ -180,63 +198,60 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // --- KHỞI TẠO STATE (Deep Merge để tránh lỗi undefined khi truy cập mảng mới) ---
+  // --- KHỞI TẠO STATE AN TOÀN ---
   const [formData, setFormData] = useState<Partial<MilitaryPersonnel>>(() => {
-    if (!initialData) return structuredClone(DEFAULT_DATA);
-    
-    const merged = { ...DEFAULT_DATA, ...initialData };
-    
-    // Merge kỹ các object lồng nhau
-    merged.quan_he_gia_dinh = { ...DEFAULT_DATA.quan_he_gia_dinh, ...initialData.quan_he_gia_dinh };
-    // @ts-ignore
-    merged.quan_he_gia_dinh.vo = { ...DEFAULT_DATA.quan_he_gia_dinh?.vo, ...(initialData.quan_he_gia_dinh as any)?.vo || {} };
-    merged.thong_tin_gia_dinh_chung = { ...DEFAULT_DATA.thong_tin_gia_dinh_chung, ...initialData.thong_tin_gia_dinh_chung };
-    merged.thong_tin_gia_dinh_chung.lich_su_vi_pham_nguoi_than = { ...DEFAULT_DATA.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than, ...(initialData.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than || {}) };
-    merged.tai_chinh_suc_khoe = { ...DEFAULT_DATA.tai_chinh_suc_khoe, ...initialData.tai_chinh_suc_khoe };
-    merged.lich_su_vi_pham = { ...DEFAULT_DATA.lich_su_vi_pham, ...initialData.lich_su_vi_pham };
-    merged.yeu_to_nuoc_ngoai = { ...DEFAULT_DATA.yeu_to_nuoc_ngoai, ...initialData.yeu_to_nuoc_ngoai };
-    merged.mang_xa_hoi = { ...DEFAULT_DATA.mang_xa_hoi, ...initialData.mang_xa_hoi };
-    merged.custom_data = { ...DEFAULT_DATA.custom_data, ...initialData.custom_data };
-    
-    // Khởi tạo các mảng nếu null (quan trọng cho các tab mới)
-    if (!merged.tieu_su_ban_than) merged.tieu_su_ban_than = [];
-    if (!merged.yeu_to_nuoc_ngoai.than_nhan) merged.yeu_to_nuoc_ngoai.than_nhan = [];
-    if (!merged.yeu_to_nuoc_ngoai.di_nuoc_ngoai) merged.yeu_to_nuoc_ngoai.di_nuoc_ngoai = [];
-    if (!merged.mang_xa_hoi.facebook) merged.mang_xa_hoi.facebook = [];
-    if (!merged.quan_he_gia_dinh.cha_me_anh_em) merged.quan_he_gia_dinh.cha_me_anh_em = [];
-    if (!merged.quan_he_gia_dinh.nguoi_yeu) merged.quan_he_gia_dinh.nguoi_yeu = [];
-    
-    // Khởi tạo mảng Kỷ luật & Vi phạm PL (Tab 5)
-    // @ts-ignore
-    if (!merged.lich_su_vi_pham.ky_luat_quan_doi) merged.lich_su_vi_pham.ky_luat_quan_doi = [];
-    // @ts-ignore
-    if (!merged.lich_su_vi_pham.vi_pham_phap_luat) merged.lich_su_vi_pham.vi_pham_phap_luat = [];
-    
-    // Khởi tạo Kinh doanh (Tab 6)
-    // @ts-ignore
-    if (!merged.tai_chinh_suc_khoe.kinh_doanh) merged.tai_chinh_suc_khoe.kinh_doanh = { ...DEFAULT_DATA.tai_chinh_suc_khoe?.kinh_doanh };
-    
-    // Khởi tạo Sức khỏe (Tab 6)
-    // @ts-ignore
-    if (!merged.tai_chinh_suc_khoe.suc_khoe) merged.tai_chinh_suc_khoe.suc_khoe = { ...DEFAULT_DATA.tai_chinh_suc_khoe?.suc_khoe };
-
-    // Logic Tình trạng hôn nhân
-    // @ts-ignore
-    if (!merged.custom_data?.tinh_trang_hon_nhan) {
+    try {
+        const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_DATA));
+        if (!initialData) return defaultCopy;
+        
+        const merged = { ...defaultCopy, ...initialData };
+        // Deep merge thủ công để tránh mất dữ liệu nested
+        merged.quan_he_gia_dinh = { ...defaultCopy.quan_he_gia_dinh, ...initialData.quan_he_gia_dinh };
         // @ts-ignore
-        const hasWife = !!(merged.quan_he_gia_dinh?.vo?.ho_ten);
+        merged.quan_he_gia_dinh.vo = { ...defaultCopy.quan_he_gia_dinh?.vo, ...(initialData.quan_he_gia_dinh as any)?.vo || {} };
+        merged.thong_tin_gia_dinh_chung = { ...defaultCopy.thong_tin_gia_dinh_chung, ...initialData.thong_tin_gia_dinh_chung };
+        merged.thong_tin_gia_dinh_chung.lich_su_vi_pham_nguoi_than = { ...defaultCopy.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than, ...(initialData.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than || {}) };
+        merged.tai_chinh_suc_khoe = { ...defaultCopy.tai_chinh_suc_khoe, ...initialData.tai_chinh_suc_khoe };
+        merged.lich_su_vi_pham = { ...defaultCopy.lich_su_vi_pham, ...initialData.lich_su_vi_pham };
+        merged.yeu_to_nuoc_ngoai = { ...defaultCopy.yeu_to_nuoc_ngoai, ...initialData.yeu_to_nuoc_ngoai };
+        merged.mang_xa_hoi = { ...defaultCopy.mang_xa_hoi, ...initialData.mang_xa_hoi };
+        merged.custom_data = { ...defaultCopy.custom_data, ...initialData.custom_data };
+        
+        // Khởi tạo mảng
+        if (!merged.tieu_su_ban_than) merged.tieu_su_ban_than = [];
+        if (!merged.yeu_to_nuoc_ngoai.than_nhan) merged.yeu_to_nuoc_ngoai.than_nhan = [];
+        if (!merged.yeu_to_nuoc_ngoai.di_nuoc_ngoai) merged.yeu_to_nuoc_ngoai.di_nuoc_ngoai = [];
+        if (!merged.mang_xa_hoi.facebook) merged.mang_xa_hoi.facebook = [];
+        if (!merged.quan_he_gia_dinh.cha_me_anh_em) merged.quan_he_gia_dinh.cha_me_anh_em = [];
+        if (!merged.quan_he_gia_dinh.nguoi_yeu) merged.quan_he_gia_dinh.nguoi_yeu = [];
         // @ts-ignore
-        merged.custom_data = { ...merged.custom_data, tinh_trang_hon_nhan: hasWife ? 'ket_hon' : 'doc_than' };
-    }
-    // Logic Người yêu
-    // @ts-ignore
-    if (merged.custom_data?.co_nguoi_yeu === undefined) {
-         const hasLover = (merged.quan_he_gia_dinh?.nguoi_yeu?.length || 0) > 0;
-         // @ts-ignore
-         merged.custom_data = { ...merged.custom_data, co_nguoi_yeu: hasLover };
-    }
+        if (!merged.lich_su_vi_pham.ky_luat_quan_doi) merged.lich_su_vi_pham.ky_luat_quan_doi = [];
+        // @ts-ignore
+        if (!merged.lich_su_vi_pham.vi_pham_phap_luat) merged.lich_su_vi_pham.vi_pham_phap_luat = [];
+        // @ts-ignore
+        if (!merged.tai_chinh_suc_khoe.kinh_doanh) merged.tai_chinh_suc_khoe.kinh_doanh = { ...defaultCopy.tai_chinh_suc_khoe?.kinh_doanh };
+        // @ts-ignore
+        if (!merged.tai_chinh_suc_khoe.suc_khoe) merged.tai_chinh_suc_khoe.suc_khoe = { ...defaultCopy.tai_chinh_suc_khoe?.suc_khoe };
 
-    return merged;
+        // Logic check người yêu/vợ
+        // @ts-ignore
+        if (!merged.custom_data?.tinh_trang_hon_nhan) {
+            // @ts-ignore
+            const hasWife = !!(merged.quan_he_gia_dinh?.vo?.ho_ten);
+            // @ts-ignore
+            merged.custom_data = { ...merged.custom_data, tinh_trang_hon_nhan: hasWife ? 'ket_hon' : 'doc_than' };
+        }
+        // @ts-ignore
+        if (merged.custom_data?.co_nguoi_yeu === undefined) {
+            const hasLover = (merged.quan_he_gia_dinh?.nguoi_yeu?.length || 0) > 0;
+            // @ts-ignore
+            merged.custom_data = { ...merged.custom_data, co_nguoi_yeu: hasLover };
+        }
+
+        return merged;
+    } catch (e) {
+        return JSON.parse(JSON.stringify(DEFAULT_DATA));
+    }
   });
 
   const showToast = (type: ToastType, title: string, message: string) => {
@@ -272,7 +287,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   const updateNested = (path: string, value: any) => {
     if (isViewMode) return;
     setFormData(prev => {
-      const updated = structuredClone(prev);
+      const updated = JSON.parse(JSON.stringify(prev));
       const keys = path.split('.');
       let current: any = updated;
       for (let i = 0; i < keys.length - 1; i++) {
@@ -287,7 +302,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   const addRow = (path: string, item: any) => {
     if(isViewMode) return;
     setFormData(prev => {
-        const updated = structuredClone(prev);
+        const updated = JSON.parse(JSON.stringify(prev));
         const keys = path.split('.');
         let current: any = updated;
         for (const k of keys) current = current[k];
@@ -300,7 +315,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   const removeRow = (path: string, idx: number) => {
     if(isViewMode) return;
     setFormData(prev => {
-        const updated = structuredClone(prev);
+        const updated = JSON.parse(JSON.stringify(prev));
         const keys = path.split('.');
         let current: any = updated;
         for (const k of keys) current = current[k];
@@ -312,7 +327,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   const updateRow = (path: string, idx: number, field: string, value: any) => {
     if(isViewMode) return;
     setFormData(prev => {
-        const updated = structuredClone(prev);
+        const updated = JSON.parse(JSON.stringify(prev));
         const keys = path.split('.');
         let current: any = updated;
         for (const k of keys) current = current[k];
@@ -330,22 +345,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
         return;
     }
     
-    // @ts-ignore
-    if (formData.custom_data?.tinh_trang_hon_nhan === 'ket_hon') {
-        // @ts-ignore
-        if (formData.quan_he_gia_dinh?.vo?.ho_ten && !formData.quan_he_gia_dinh.vo.nam_sinh) {
-            showToast('warning', 'THIẾU DỮ LIỆU', 'Vui lòng nhập năm sinh của Vợ.');
-            setActiveTab(3);
-            return;
-        }
-    }
-    
-    if (formData.tai_chinh_suc_khoe?.vay_no?.co_khong && !formData.tai_chinh_suc_khoe.vay_no.so_tien) {
-        showToast('warning', 'AN NINH', 'Đã tích "Vay nợ" thì phải nhập số tiền.');
-        setActiveTab(5); // Chuyển đúng tab An Ninh
-        return;
-    }
-
     try {
         const unitName = units.find(u => u.id === formData.don_vi_id)?.name || '';
         const finalData = { ...formData, don_vi: unitName };
@@ -370,7 +369,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   const tableCell = "p-2 border-b border-gray-100 align-middle";
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
       <div className="bg-[#f8f9fa] w-full max-w-[95rem] max-h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-fade-in relative">
         <MilitaryToast toasts={toasts} removeToast={(id) => setToasts(t => t.filter(x => x.id !== id))} />
 
@@ -446,6 +445,12 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                         </div>
 
                         <div className="col-span-3">
+                             <label className={labelBase}>Quê quán</label>
+                             {/* @ts-ignore */}
+                             <input className={inputBase} value={formData.que_quan || ''} onChange={e => setFormData({...formData, que_quan: e.target.value})} disabled={isViewMode} placeholder="Xã/Phường - Huyện/Quận - Tỉnh/Thành phố" />
+                        </div>
+
+                        <div className="col-span-3">
                              <label className={labelBase}>Hộ khẩu thường trú</label>
                              <input className={inputBase} value={formData.ho_khau_thu_tru} onChange={e => setFormData({...formData, ho_khau_thu_tru: e.target.value})} disabled={isViewMode} placeholder="Thôn/Xóm - Xã/Phường - Huyện/Quận - Tỉnh/Thành phố" />
                         </div>
@@ -455,7 +460,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                                  <label className={labelBase}>Đơn vị quản lý <span className="text-red-500">*</span></label>
                                  <select className={`${inputBase} font-bold text-green-800`} value={formData.don_vi_id} onChange={e => setFormData({...formData, don_vi_id: e.target.value})} disabled={isViewMode}>
                                      <option value="">-- Chọn đơn vị --</option>
-                                     {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                     {(units || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                                  </select>
                              </div>
                              <div>
@@ -471,23 +476,99 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                              <VietnamDateInput label="Nhập ngũ" value={formData.nhap_ngu_ngay} onChange={v => setFormData({...formData, nhap_ngu_ngay: v})} disabled={isViewMode} className={inputBase} />
                              <VietnamDateInput label="Vào Đoàn" value={formData.ngay_vao_doan} onChange={v => setFormData({...formData, ngay_vao_doan: v})} disabled={isViewMode} className={inputBase} />
                              <VietnamDateInput label="Vào Đảng" value={formData.vao_dang_ngay} onChange={v => setFormData({...formData, vao_dang_ngay: v})} disabled={isViewMode} className={inputBase} />
-                             <div>
-                                 <label className={labelBase}>Trình độ học vấn</label>
-                                 <input list="edu-options" className={inputBase} value={formData.trinh_do_van_hoa} onChange={e => setFormData({...formData, trinh_do_van_hoa: e.target.value})} disabled={isViewMode} placeholder="12/12 hoặc Đại học..." />
-                                 <datalist id="edu-options">
-                                     <option value="12/12" />
-                                     <option value="9/12" />
-                                     <option value="Đại học" />
-                                     <option value="Cao đẳng" />
-                                     <option value="Trung cấp" />
-                                     <option value="Thạc sĩ" />
-                                 </datalist>
+                             
+                             {/* TRÌNH ĐỘ VĂN HÓA & NĂNG KHIẾU */}
+                             <div className="col-span-4 grid grid-cols-12 gap-4 mt-2 pt-4 border-t border-green-200/50">
+                                <div className="col-span-3">
+                                    <label className={labelBase}><GraduationCap size={12} className="inline mr-1"/> Văn hóa chung</label>
+                                    <select className={inputBase} value={formData.trinh_do_van_hoa} onChange={e => setFormData({...formData, trinh_do_van_hoa: e.target.value})} disabled={isViewMode}>
+                                        <option value="12/12">12/12</option>
+                                        <option value="9/12">9/12</option>
+                                        <option value="Khác">Khác</option>
+                                    </select>
+                                </div>
+                                <div className="col-span-4">
+                                    <label className={labelBase}><GraduationCap size={12} className="inline mr-1"/> Trình độ chuyên môn</label>
+                                    <select 
+                                        className={inputBase} 
+                                        value={formData.custom_data?.trinh_do_chuyen_mon} 
+                                        onChange={e => updateNested('custom_data.trinh_do_chuyen_mon', e.target.value)} 
+                                        disabled={isViewMode}
+                                    >
+                                        <option value="Đại học">Đại học</option>
+                                        <option value="Thạc sĩ">Thạc sĩ</option>
+                                        <option value="Tiến sĩ">Tiến sĩ</option>
+                                        <option value="Cao đẳng">Cao đẳng</option>
+                                        <option value="Trung cấp">Trung cấp</option>
+                                        <option value="Sơ cấp">Sơ cấp</option>
+                                        <option value="Không">Không</option>
+                                    </select>
+                                </div>
+                                <div className="col-span-2 flex items-end pb-3">
+                                    <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-lg border border-green-200 shadow-sm w-full hover:bg-green-50 transition-colors">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={formData.da_tot_nghiep} 
+                                            onChange={e => setFormData({...formData, da_tot_nghiep: e.target.checked})} 
+                                            disabled={isViewMode}
+                                            className="w-4 h-4 accent-green-600"
+                                        />
+                                        <span className="text-[11px] font-bold text-gray-700 uppercase">Đã tốt nghiệp</span>
+                                    </label>
+                                </div>
+                                <div className="col-span-3">
+                                    <label className={labelBase}><Award size={12} className="inline mr-1"/> Năng khiếu / Sở trường</label>
+                                    <input 
+                                        className={inputBase} 
+                                        value={formData.nang_khieu_so_truong} 
+                                        onChange={e => setFormData({...formData, nang_khieu_so_truong: e.target.value})} 
+                                        disabled={isViewMode}
+                                        placeholder="VD: Ca hát, Thể thao..."
+                                    />
+                                </div>
+
+                                {/* BỔ SUNG: QUẢN LÝ NGHỈ PHÉP */}
+                                <div className="col-span-12 mt-3 pt-3 border-t border-green-200/50 flex items-center justify-between bg-green-100/50 p-2 rounded-lg">
+                                    <div className="flex items-center gap-2">
+                                        <Calendar size={16} className="text-green-700"/>
+                                        <span className="text-xs font-bold text-green-800 uppercase">Quản lý phép năm:</span>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[10px] font-bold text-gray-500 uppercase">Tiêu chuẩn:</span>
+                                            <input 
+                                                type="number" 
+                                                className="w-12 h-7 text-center text-sm font-bold border border-green-300 rounded focus:ring-1 focus:ring-green-500 bg-white"
+                                                value={formData.nghi_phep_tham_chieu}
+                                                onChange={e => setFormData({...formData, nghi_phep_tham_chieu: Number(e.target.value)})}
+                                                disabled={isViewMode}
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[10px] font-bold text-gray-500 uppercase">Đã nghỉ:</span>
+                                            <input 
+                                                type="number" 
+                                                className="w-12 h-7 text-center text-sm font-bold border border-red-300 rounded focus:ring-1 focus:ring-red-500 text-red-600 bg-white"
+                                                value={formData.nghi_phep_thuc_te}
+                                                onChange={e => setFormData({...formData, nghi_phep_thuc_te: Number(e.target.value)})}
+                                                disabled={isViewMode}
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm border border-green-200">
+                                            <span className="text-[10px] font-bold text-gray-500 uppercase">Còn lại:</span>
+                                            <span className={`font-black text-sm ${(formData.nghi_phep_tham_chieu || 0) - (formData.nghi_phep_thuc_te || 0) < 0 ? 'text-red-600' : 'text-green-700'}`}>
+                                                {(formData.nghi_phep_tham_chieu || 0) - (formData.nghi_phep_thuc_te || 0)}
+                                            </span>
+                                            <span className="text-[10px] text-gray-400">ngày</span>
+                                        </div>
+                                    </div>
+                                </div>
                              </div>
                         </div>
                     </div>
                 </div>
             )}
-
+            
             {/* TAB 2: TIỂU SỬ & MẠNG XÃ HỘI */}
             {activeTab === 2 && (
               <div className="space-y-8 animate-fade-in">
@@ -671,12 +752,12 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                                             <td className="p-2 text-center">
                                                 <input type="radio" name="bao_tin_khancap" disabled={isViewMode || !mem.ho_ten} checked={formData.custom_data?.nguoi_bao_tin_khancap === mem.ho_ten && !!mem.ho_ten} onChange={() => updateNested('custom_data.nguoi_bao_tin_khancap', mem.ho_ten)} className="w-4 h-4 accent-red-600 cursor-pointer" />
                                             </td>
-                                            <td className="p-2"><select className={inputBase} value={mem.quan_he} onChange={e => {const u = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; u[idx].quan_he = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode}><option>Bố</option><option>Mẹ</option><option>Anh</option><option>Chị</option><option>Em</option></select></td>
-                                            <td className="p-2"><input className={inputBase} value={mem.ho_ten} onChange={e => {const u = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; u[idx].ho_ten = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode} placeholder="Họ tên đầy đủ"/></td>
-                                            <td className="p-2"><input className={inputBase} value={mem.nam_sinh} onChange={e => {const u = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; u[idx].nam_sinh = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode} placeholder="Năm"/></td>
-                                            <td className="p-2"><input className={inputBase} value={mem.nghe_nghiep} onChange={e => {const u = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; u[idx].nghe_nghiep = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode} /></td>
-                                            <td className="p-2"><input className={inputBase} value={mem.cho_o} onChange={e => {const u = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; u[idx].cho_o = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode} /></td>
-                                            <td className="p-2"><input className={inputBase} value={mem.sdt} onChange={e => {const u = [...(formData.quan_he_gia_dinh?.cha_me_anh_em || [])]; u[idx].sdt = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode} placeholder="Số ĐT"/></td>
+                                            <td className="p-2"><select className={inputBase} value={mem.quan_he} onChange={e => {const u = JSON.parse(JSON.stringify(formData.quan_he_gia_dinh?.cha_me_anh_em || [])); u[idx].quan_he = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode}><option>Bố</option><option>Mẹ</option><option>Anh</option><option>Chị</option><option>Em</option></select></td>
+                                            <td className="p-2"><input className={inputBase} value={mem.ho_ten} onChange={e => {const u = JSON.parse(JSON.stringify(formData.quan_he_gia_dinh?.cha_me_anh_em || [])); u[idx].ho_ten = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode} placeholder="Họ tên đầy đủ"/></td>
+                                            <td className="p-2"><input className={inputBase} value={mem.nam_sinh} onChange={e => {const u = JSON.parse(JSON.stringify(formData.quan_he_gia_dinh?.cha_me_anh_em || [])); u[idx].nam_sinh = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode} placeholder="Năm"/></td>
+                                            <td className="p-2"><input className={inputBase} value={mem.nghe_nghiep} onChange={e => {const u = JSON.parse(JSON.stringify(formData.quan_he_gia_dinh?.cha_me_anh_em || [])); u[idx].nghe_nghiep = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode} /></td>
+                                            <td className="p-2"><input className={inputBase} value={mem.cho_o} onChange={e => {const u = JSON.parse(JSON.stringify(formData.quan_he_gia_dinh?.cha_me_anh_em || [])); u[idx].cho_o = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode} /></td>
+                                            <td className="p-2"><input className={inputBase} value={mem.sdt} onChange={e => {const u = JSON.parse(JSON.stringify(formData.quan_he_gia_dinh?.cha_me_anh_em || [])); u[idx].sdt = e.target.value; updateNested('quan_he_gia_dinh.cha_me_anh_em', u);}} disabled={isViewMode} placeholder="Số ĐT"/></td>
                                             {!isViewMode && <td className="p-2 text-center"><button onClick={() => removeRow('quan_he_gia_dinh.cha_me_anh_em', idx)} className="text-gray-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded transition-colors"><Trash2 size={16}/></button></td>}
                                         </tr>
                                     ))}
@@ -725,8 +806,8 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                                              {(formData.quan_he_gia_dinh?.con || []).length === 0 && <p className="text-xs text-gray-400 italic text-center py-4 bg-white rounded-lg border border-dashed border-gray-300">Chưa có thông tin con cái</p>}
                                              {(formData.quan_he_gia_dinh?.con || []).map((child, idx) => (
                                                  <div key={idx} className="flex gap-2">
-                                                     <input className={inputBase} value={child.ten} onChange={e => { const u = [...(formData.quan_he_gia_dinh?.con || [])]; u[idx].ten = e.target.value; updateNested('quan_he_gia_dinh.con', u); }} disabled={isViewMode} placeholder="Tên con" />
-                                                     <input className={`${inputBase} w-24 text-center`} value={child.ns} onChange={e => { const u = [...(formData.quan_he_gia_dinh?.con || [])]; u[idx].ns = e.target.value; updateNested('quan_he_gia_dinh.con', u); }} disabled={isViewMode} placeholder="Năm sinh" />
+                                                     <input className={inputBase} value={child.ten} onChange={e => { const u = JSON.parse(JSON.stringify(formData.quan_he_gia_dinh?.con || [])); u[idx].ten = e.target.value; updateNested('quan_he_gia_dinh.con', u); }} disabled={isViewMode} placeholder="Tên con" />
+                                                     <input className={`${inputBase} w-24 text-center`} value={child.ns} onChange={e => { const u = JSON.parse(JSON.stringify(formData.quan_he_gia_dinh?.con || [])); u[idx].ns = e.target.value; updateNested('quan_he_gia_dinh.con', u); }} disabled={isViewMode} placeholder="Năm sinh" />
                                                      {!isViewMode && <button onClick={() => removeRow('quan_he_gia_dinh.con', idx)} className="text-red-500 hover:bg-red-50 p-2 rounded"><Trash2 size={16}/></button>}
                                                  </div>
                                              ))}
@@ -797,10 +878,10 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                          {formData.yeu_to_nuoc_ngoai?.than_nhan?.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-gray-400 italic text-xs">Không có thân nhân ở nước ngoài</td></tr>}
                          {formData.yeu_to_nuoc_ngoai?.than_nhan?.map((item, idx) => (
                            <tr key={idx}>
-                             <td className={tableCell}><input className={inputBase} value={item.quan_he} onChange={e => { const u = [...(formData.yeu_to_nuoc_ngoai?.than_nhan || [])]; u[idx].quan_he = e.target.value; updateNested('yeu_to_nuoc_ngoai.than_nhan', u); }} disabled={isViewMode} placeholder="VD: Cô ruột" /></td>
-                             <td className={tableCell}><input className={inputBase} value={item.ho_ten} onChange={e => { const u = [...(formData.yeu_to_nuoc_ngoai?.than_nhan || [])]; u[idx].ho_ten = e.target.value; updateNested('yeu_to_nuoc_ngoai.than_nhan', u); }} disabled={isViewMode} /></td>
-                             <td className={tableCell}><input className={inputBase} value={item.nuoc} onChange={e => { const u = [...(formData.yeu_to_nuoc_ngoai?.than_nhan || [])]; u[idx].nuoc = e.target.value; updateNested('yeu_to_nuoc_ngoai.than_nhan', u); }} disabled={isViewMode} /></td>
-                             <td className={tableCell}><input className={inputBase} value={item.nghe_nghiep} onChange={e => { const u = [...(formData.yeu_to_nuoc_ngoai?.than_nhan || [])]; u[idx].nghe_nghiep = e.target.value; updateNested('yeu_to_nuoc_ngoai.than_nhan', u); }} disabled={isViewMode} /></td>
+                             <td className={tableCell}><input className={inputBase} value={item.quan_he} onChange={e => { const u = JSON.parse(JSON.stringify(formData.yeu_to_nuoc_ngoai?.than_nhan || [])); u[idx].quan_he = e.target.value; updateNested('yeu_to_nuoc_ngoai.than_nhan', u); }} disabled={isViewMode} placeholder="VD: Cô ruột" /></td>
+                             <td className={tableCell}><input className={inputBase} value={item.ho_ten} onChange={e => { const u = JSON.parse(JSON.stringify(formData.yeu_to_nuoc_ngoai?.than_nhan || [])); u[idx].ho_ten = e.target.value; updateNested('yeu_to_nuoc_ngoai.than_nhan', u); }} disabled={isViewMode} /></td>
+                             <td className={tableCell}><input className={inputBase} value={item.nuoc} onChange={e => { const u = JSON.parse(JSON.stringify(formData.yeu_to_nuoc_ngoai?.than_nhan || [])); u[idx].nuoc = e.target.value; updateNested('yeu_to_nuoc_ngoai.than_nhan', u); }} disabled={isViewMode} /></td>
+                             <td className={tableCell}><input className={inputBase} value={item.nghe_nghiep} onChange={e => { const u = JSON.parse(JSON.stringify(formData.yeu_to_nuoc_ngoai?.than_nhan || [])); u[idx].nghe_nghiep = e.target.value; updateNested('yeu_to_nuoc_ngoai.than_nhan', u); }} disabled={isViewMode} /></td>
                              {!isViewMode && <td className={tableCell}><button onClick={() => removeRow('yeu_to_nuoc_ngoai.than_nhan', idx)} className="text-gray-400 hover:text-red-500"><Trash2 size={16}/></button></td>}
                            </tr>
                          ))}
@@ -827,10 +908,10 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                          {formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-gray-400 italic text-xs">Chưa từng đi nước ngoài</td></tr>}
                          {formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.map((item, idx) => (
                            <tr key={idx}>
-                             <td className={tableCell}><input className={inputBase} value={item.nuoc} onChange={e => { const u = [...(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])]; u[idx].nuoc = e.target.value; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', u); }} disabled={isViewMode} /></td>
-                             <td className={tableCell}><input className={inputBase} value={item.thoi_gian} onChange={e => { const u = [...(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])]; u[idx].thoi_gian = e.target.value; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', u); }} disabled={isViewMode} placeholder="mm/yyyy" /></td>
-                             <td className={tableCell}><input className={inputBase} value={item.muc_dich} onChange={e => { const u = [...(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])]; u[idx].muc_dich = e.target.value; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', u); }} disabled={isViewMode} /></td>
-                             <td className={tableCell}><input className={inputBase} value={item.ket_qua} onChange={e => { const u = [...(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])]; u[idx].ket_qua = e.target.value; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', u); }} disabled={isViewMode} /></td>
+                             <td className={tableCell}><input className={inputBase} value={item.nuoc} onChange={e => { const u = JSON.parse(JSON.stringify(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])); u[idx].nuoc = e.target.value; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', u); }} disabled={isViewMode} /></td>
+                             <td className={tableCell}><input className={inputBase} value={item.thoi_gian} onChange={e => { const u = JSON.parse(JSON.stringify(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])); u[idx].thoi_gian = e.target.value; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', u); }} disabled={isViewMode} placeholder="mm/yyyy" /></td>
+                             <td className={tableCell}><input className={inputBase} value={item.muc_dich} onChange={e => { const u = JSON.parse(JSON.stringify(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])); u[idx].muc_dich = e.target.value; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', u); }} disabled={isViewMode} /></td>
+                             <td className={tableCell}><input className={inputBase} value={item.ket_qua} onChange={e => { const u = JSON.parse(JSON.stringify(formData.yeu_to_nuoc_ngoai?.di_nuoc_ngoai || [])); u[idx].ket_qua = e.target.value; updateNested('yeu_to_nuoc_ngoai.di_nuoc_ngoai', u); }} disabled={isViewMode} /></td>
                              {!isViewMode && <td className={tableCell}><button onClick={() => removeRow('yeu_to_nuoc_ngoai.di_nuoc_ngoai', idx)} className="text-gray-400 hover:text-red-500"><Trash2 size={16}/></button></td>}
                            </tr>
                          ))}

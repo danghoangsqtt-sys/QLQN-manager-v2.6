@@ -1,4 +1,3 @@
-
 export enum AppMode {
   LOGIN = 'LOGIN',
   COMMANDER = 'COMMANDER',
@@ -45,11 +44,7 @@ export interface BiographyEntry {
   place: string;
 }
 
-export interface SocialAccount {
-  name: string;
-  phone: string;
-}
-
+// Khớp với Form: cha_me_anh_em sử dụng các trường này
 export interface FamilyMember {
   quan_he: string;
   ho_ten: string;
@@ -59,16 +54,27 @@ export interface FamilyMember {
   sdt: string;
 }
 
+// Khớp với Form: than_nhan sử dụng ho_ten, quan_he, nuoc, nghe_nghiep
 export interface ForeignRelative {
-  ten: string;
-  qh: string;
+  quan_he: string;
+  ho_ten: string;
   nuoc: string;
+  nghe_nghiep: string;
 }
 
+// Khớp với Form: di_nuoc_ngoai sử dụng nuoc, thoi_gian, muc_dich, ket_qua
 export interface TravelHistory {
   nuoc: string;
   muc_dich: string;
   thoi_gian: string;
+  ket_qua: string;
+}
+
+// Interface kỷ luật/vi phạm cho mảng trong lich_su_vi_pham
+export interface ViolationEntry {
+  nam: string;
+  noi_dung: string;
+  hinh_thuc: string;
 }
 
 export interface MilitaryPersonnel {
@@ -101,39 +107,51 @@ export interface MilitaryPersonnel {
   
   // JSON Columns
   tieu_su_ban_than: BiographyEntry[];
+  
+  // Sửa: Mạng xã hội trong Form là mảng string, không phải object
   mang_xa_hoi: { 
-    facebook: SocialAccount[]; 
-    zalo: SocialAccount[]; 
-    tiktok: SocialAccount[] 
+    facebook: string[]; 
+    zalo: string[]; 
+    tiktok: string[];
   };
+  
   hoan_canh_song: {
     song_chung_voi: string;
     chi_tiet_nguoi_nuoi_duong: { ten: string; nghe: string; diachi: string } | null;
     ly_do_khong_song_cung_bo_me: string;
   };
+  
   quan_he_gia_dinh: {
     cha_me_anh_em: FamilyMember[];
     vo: { ho_ten: string; nam_sinh: string; sdt: string; nghe_nghiep: string; noi_o: string } | null;
     con: Array<{ ten: string; ns: string }>;
-    nguoi_yeu: Array<{ ten: string; ns: string; nghe_o: string; sdt: string }>;
+    // Sửa: Khớp các trường người yêu trong Form (ho_ten, nam_sinh...)
+    nguoi_yeu: Array<{ ho_ten: string; nam_sinh: string; nghe_nghiep: string; noi_o: string; sdt: string }>;
   };
+  
   thong_tin_gia_dinh_chung: {
     muc_song: string;
     nghe_nghiep_chinh: string;
     lich_su_vi_pham_nguoi_than: { co_khong: boolean; chi_tiet: string };
     lich_su_covid_gia_dinh: string;
   };
+  
   yeu_to_nuoc_ngoai: {
     than_nhan: ForeignRelative[];
     di_nuoc_ngoai: TravelHistory[];
     ho_chieu: { da_co: boolean; du_dinh_nuoc: string };
     xuat_canh_dinh_cu: { dang_lam_thu_tuc: boolean; nuoc: string; nguoi_bao_lanh: string };
   };
+  
   lich_su_vi_pham: {
     vi_pham_dia_phuong: { co_khong: boolean; noi_dung: string; ket_qua: string };
     danh_bac: { co_khong: boolean; hinh_thuc: string; dia_diem: string; doi_tuong: string };
     ma_tuy: { co_khong: boolean; thoi_gian: string; loai: string; so_lan: string; doi_tuong: string; xu_ly: string; hinh_thuc_xu_ly: string };
+    // Bổ sung: 2 mảng này thiếu trong type cũ nhưng có trong Form (Tab 5)
+    ky_luat_quan_doi: ViolationEntry[];
+    vi_pham_phap_luat: ViolationEntry[];
   };
+  
   tai_chinh_suc_khoe: {
     vay_no: { 
       co_khong: boolean; 
@@ -146,9 +164,26 @@ export interface MilitaryPersonnel {
       gia_dinh_biet: boolean; 
       nguoi_tra: string;
     };
-    kinh_doanh: { co_khong: boolean; chi_tiet: string };
+    // Sửa: Kinh doanh trong Form là object chi tiết
+    kinh_doanh: { 
+      co_khong: boolean; 
+      hinh_thuc: string; 
+      loai_hinh: string; 
+      von: string; 
+      dia_diem: string; 
+      doi_tac: string; 
+      sdt_doi_tac: string; 
+    };
     covid_ban_than: { da_mac: boolean; thoi_gian: string };
+    // Bổ sung: Sức khỏe thiếu trong type cũ nhưng có trong Form (Tab 6)
+    suc_khoe: {
+      chieu_cao: string;
+      can_nang: string;
+      phan_loai: string;
+      benh_ly: string;
+    };
   };
+  
   custom_data: Record<string, any>;
   y_kien_nguyen_vong: string;
   vi_pham_nuoc_ngoai: string;

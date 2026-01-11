@@ -1,4 +1,3 @@
-
 import { 
   Search, FileDown, LogOut, 
   Users, Trash2, Eye,
@@ -8,11 +7,13 @@ import {
   LayoutDashboard,
   GraduationCap,
   FileText, MapPin, ChevronLeft, ChevronRight,
-  FileEdit, AlertTriangle, CheckCircle2, X, Info, Loader2
+  FileEdit, AlertTriangle, CheckCircle2, X, Info, Loader2,
+  RefreshCcw, FilterX
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { MilitaryPersonnel, Unit, ShortcutConfig } from '../types';
-import { db, FilterCriteria } from '../store';
+import { MilitaryPersonnel, Unit } from '../types';
+import { db } from '../store';
+import { FilterCriteria } from '../utils/personnelFilter';
 import PersonnelForm from './PersonnelForm';
 import UnitTree from './UnitTree';
 import Settings from './Settings';
@@ -20,7 +21,6 @@ import UserGuide from './UserGuide';
 import { exportPersonnelToCSV } from '../utils/exportHelper';
 import ProfilePrintTemplate from './ProfilePrintTemplate';
 
-type SortType = 'name' | 'age' | 'enlistment' | 'none';
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 interface Toast {
@@ -31,11 +31,19 @@ interface Toast {
 
 const ITEMS_PER_PAGE = 25;
 
+// Giá trị mặc định cho bộ lọc - Sort mặc định là Mới tạo (none) hoặc Tên (name)
+const DEFAULT_FILTERS: FilterCriteria = {
+  keyword: '', unitId: 'all', rank: 'all', position: 'all',
+  political: 'all', security: 'all', 
+  education: 'all', marital: 'all', hasChildren: 'all',
+  ethnicity: 'all', religion: 'all', hometown: '', ageRange: 'all',
+  sortBy: 'none' // Để mặc định là 'none' để hiển thị người mới nhập trước
+};
+
 const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<'units' | 'settings' | 'overview'>('overview');
   const [personnel, setPersonnel] = useState<MilitaryPersonnel[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
-  const [shortcuts, setShortcuts] = useState<ShortcutConfig[]>([]);
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPerson, setEditingPerson] = useState<MilitaryPersonnel | undefined>(undefined);
@@ -46,22 +54,17 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
 
-  const [sortBy, setSortBy] = useState<SortType>('name');
+  // Stats
   const [dashboardStats, setDashboardStats] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // States cho hệ thống thông báo mới
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; personId?: string; personName?: string }>({ isOpen: false });
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const [filters, setFilters] = useState<FilterCriteria>({
-    keyword: '', unitId: 'all', rank: 'all', position: 'all',
-    political: 'all', security: 'all', 
-    education: 'all', marital: 'all', hasChildren: 'all'
-  });
+  const [filters, setFilters] = useState<FilterCriteria>(DEFAULT_FILTERS);
 
   const addToast = (message: string, type: ToastType = 'success') => {
     const id = Date.now().toString();
@@ -93,6 +96,8 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           educationHigh: 0,
           ranks: {}
       });
+      // Chỉ reset trang nếu danh sách rỗng hoặc filter thay đổi mạnh, 
+      // nhưng ở đây ta cứ set về 1 để an toàn khi sort/filter
       setCurrentPage(1);
     } catch (error) {
       addToast("Không thể tải dữ liệu hệ thống", "error");
@@ -101,23 +106,25 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const resetFilters = () => {
+    setSearchTerm('');
+    setFilters(DEFAULT_FILTERS);
+    addToast("Đã đặt lại bộ lọc", "info");
+  };
+
   const handlePrint = async (person: MilitaryPersonnel) => {
     try {
         const fullData = await db.getPersonnelById(person.id);
         if (fullData) {
-            // Lưu lại tiêu đề cũ
             const originalTitle = document.title;
-            // Đặt tiêu đề mới (sẽ trở thành tên file khi lưu PDF)
             const cleanName = person.ho_ten.trim().replace(/\s+/g, '_');
             document.title = `Ho_so_${cleanName}_${person.cccd}`;
 
             addToast(`Đang chuẩn bị bản in cho ${person.ho_ten.split(' ').pop()}...`, "info");
             setPrintingPerson(fullData);
 
-            // Đợi một khoảng thời gian ngắn để template kịp render vào DOM
             setTimeout(() => {
               window.print();
-              // Sau khi in xong (hoặc đóng hộp thoại in), khôi phục lại trạng thái và tiêu đề
               setPrintingPerson(undefined);
               document.title = originalTitle;
             }, 800);
@@ -129,7 +136,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
   const handleExportCSV = () => {
     try {
-        exportPersonnelToCSV(sortedPersonnel, `Danh_sach_quan_nhan_${new Date().getTime()}.xls`);
+        exportPersonnelToCSV(personnel, `Danh_sach_quan_nhan_${new Date().getTime()}.xls`);
         addToast("Đã xuất file Excel thành công");
     } catch (e) {
         addToast("Lỗi khi xuất dữ liệu Excel", "error");
@@ -151,28 +158,13 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     }
   };
 
-  const sortedPersonnel = useMemo(() => {
-    const list = [...personnel];
-    if (sortBy === 'name') {
-      list.sort((a, b) => {
-        const nameA = a.ho_ten.trim().split(' ').pop() || '';
-        const nameB = b.ho_ten.trim().split(' ').pop() || '';
-        return nameA.localeCompare(nameB, 'vi', { sensitivity: 'base' });
-      });
-    } else if (sortBy === 'age') {
-      list.sort((a, b) => new Date(a.ngay_sinh).getTime() - new Date(b.ngay_sinh).getTime());
-    } else if (sortBy === 'enlistment') {
-      list.sort((a, b) => new Date(b.nhap_ngu_ngay).getTime() - new Date(a.nhap_ngu_ngay).getTime());
-    }
-    return list;
-  }, [personnel, sortBy]);
-
+  // Tính toán phân trang
   const paginatedPersonnel = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return sortedPersonnel.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [sortedPersonnel, currentPage]);
+    return personnel.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [personnel, currentPage]);
 
-  const totalPages = Math.ceil(sortedPersonnel.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(personnel.length / ITEMS_PER_PAGE);
 
   const StatCard = ({ title, value, icon: Icon, color, unitLabel, bgColor }: any) => (
     <div className={`bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between group hover:border-green-600/30 hover:shadow-md transition-all`}>
@@ -218,7 +210,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   return (
     <div className="h-screen bg-[#F0F2F5] flex font-sans text-slate-800 overflow-hidden relative text-sm">
       
-      {/* Container in ấn - Nằm ngoài cấu trúc layout chính */}
+      {/* Container in ấn */}
       <ProfilePrintTemplate data={printingPerson} />
 
       {/* TOAST NOTIFICATIONS */}
@@ -276,6 +268,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         </div>
       )}
 
+      {/* SIDEBAR */}
       <div className="w-64 bg-[#14452F] flex flex-col shadow-xl shrink-0 z-20 no-print">
         <div className="p-6 text-center border-b border-white/5 bg-[#0d2d1f]">
           <div className="flex flex-col items-center gap-2 mb-1">
@@ -361,39 +354,151 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div className="flex items-center gap-4">
                    <h2 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2">
-                     <FileText size={16} className="text-green-700"/> Danh sách ({sortedPersonnel.length})
+                     <FileText size={16} className="text-green-700"/> Danh sách ({filters.unitId === 'all' && !filters.keyword ? dashboardStats?.total : personnel.length})
                    </h2>
                    <div className="h-4 w-[1px] bg-slate-300"></div>
                    <div className="flex items-center gap-2">
                       <span className="text-xs text-slate-500 font-medium">Sắp xếp:</span>
                       <select 
                         className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-md px-2 py-1 outline-none focus:border-green-500"
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as SortType)}
+                        value={filters.sortBy}
+                        onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value as any }))}
                       >
+                        <option value="none">Mới tạo (Mặc định)</option>
                         <option value="name">Tên A-Z</option>
-                        <option value="age">Độ tuổi</option>
-                        <option value="enlistment">Nhập ngũ</option>
+                        <option value="age">Độ tuổi (Trẻ - Già)</option>
+                        <option value="enlistment">Nhập ngũ mới nhất</option>
                       </select>
                    </div>
                 </div>
-                <div>
+                <div className="flex items-center gap-2">
+                   <button 
+                      onClick={resetFilters}
+                      className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                      title="Xóa bộ lọc"
+                   >
+                     <FilterX size={16}/>
+                   </button>
                    <button 
                       onClick={() => setShowAdvancedFilter(!showAdvancedFilter)} 
                       className={`px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 transition-all border ${showAdvancedFilter ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                    >
-                     <Filter size={14}/> Bộ lọc
+                     <Filter size={14}/> Bộ lọc nâng cao
                    </button>
                 </div>
               </div>
 
               {showAdvancedFilter && (
-                <div className="bg-white p-5 rounded-xl border border-green-100 shadow-sm animate-slide-down">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Chính trị</label><select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.political} onChange={e => setFilters({...filters, political: e.target.value as any})}><option value="all">Tất cả</option><option value="dang_vien">Đảng viên</option><option value="quan_chung">Quần chúng</option></select></div>
-                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Học vấn</label><select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.education} onChange={e => setFilters({...filters, education: e.target.value as any})}><option value="all">Tất cả</option><option value="12_12">12/12</option><option value="dai_hoc">Đại học</option><option value="cao_dang">Cao đẳng</option></select></div>
-                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Hôn nhân</label><select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.marital} onChange={e => setFilters({...filters, marital: e.target.value as any})}><option value="all">Tất cả</option><option value="da_vo">Đã kết hôn</option><option value="chua_vo">Độc thân</option></select></div>
-                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">An ninh</label><select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.security} onChange={e => setFilters({...filters, security: e.target.value as any})}><option value="all">Tất cả</option><option value="canh_bao">Cảnh báo An ninh</option><option value="vay_no">Vay nợ</option><option value="vi_pham">Vi phạm kỷ luật</option><option value="nuoc_ngoai">Yếu tố nước ngoài</option></select></div>
+                <div className="bg-white p-6 rounded-xl border border-green-100 shadow-sm animate-slide-down">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Nhóm Chính Trị & Học Vấn */}
+                    <div className="space-y-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Chính trị</label>
+                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.political} onChange={e => setFilters({...filters, political: e.target.value as any})}>
+                                <option value="all">Tất cả</option>
+                                <option value="dang_vien">Đảng viên</option>
+                                <option value="doan_vien">Đoàn viên</option>
+                                <option value="quan_chung">Quần chúng</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Học vấn</label>
+                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.education} onChange={e => setFilters({...filters, education: e.target.value as any})}>
+                                <option value="all">Tất cả</option>
+                                <option value="12_12">12/12</option>
+                                <option value="dai_hoc_cao_dang">Đại học / CĐ / Thạc sĩ</option>
+                                <option value="duoi_dai_hoc">Dưới ĐH / CĐ</option>
+                                <option value="da_tot_nghiep">Đã tốt nghiệp</option>
+                                <option value="chua_tot_nghiep">Chưa tốt nghiệp</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Nhóm Gia Đình & Dân Số */}
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-2">
+                             <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Hôn nhân</label>
+                                <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.marital} onChange={e => setFilters({...filters, marital: e.target.value as any})}>
+                                    <option value="all">Tất cả</option>
+                                    <option value="da_vo">Đã kết hôn</option>
+                                    <option value="chua_vo">Độc thân</option>
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Con cái</label>
+                                <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.hasChildren} onChange={e => setFilters({...filters, hasChildren: e.target.value as any})}>
+                                    <option value="all">Tất cả</option>
+                                    <option value="co_con">Có con</option>
+                                    <option value="chua_con">Chưa có con</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Dân tộc</label>
+                                <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.ethnicity} onChange={e => setFilters({...filters, ethnicity: e.target.value as any})}>
+                                    <option value="all">Tất cả</option>
+                                    <option value="kinh">Kinh</option>
+                                    <option value="dan_toc_thieu_so">Thiểu số</option>
+                                </select>
+                            </div>
+                             <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Tôn giáo</label>
+                                <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.religion} onChange={e => setFilters({...filters, religion: e.target.value as any})}>
+                                    <option value="all">Tất cả</option>
+                                    <option value="khong">Không</option>
+                                    <option value="co_ton_giao">Có đạo</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Nhóm Xã Hội (Quê, Tuổi) */}
+                    <div className="space-y-4">
+                         <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Quê quán / HKTT</label>
+                            <input 
+                                type="text" 
+                                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500 placeholder:text-slate-300" 
+                                placeholder="Nhập địa danh..."
+                                value={filters.hometown}
+                                onChange={e => setFilters({...filters, hometown: e.target.value})}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Độ tuổi</label>
+                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.ageRange} onChange={e => setFilters({...filters, ageRange: e.target.value as any})}>
+                                <option value="all">Tất cả</option>
+                                <option value="18_25">18 - 25 tuổi</option>
+                                <option value="26_30">26 - 30 tuổi</option>
+                                <option value="31_40">31 - 40 tuổi</option>
+                                <option value="tren_40">Trên 40 tuổi</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Nhóm An Ninh */}
+                    <div className="space-y-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-red-400 uppercase">Tình hình An ninh & Kỷ luật</label>
+                            <select className="w-full p-2 bg-red-50 border border-red-200 rounded-lg text-xs font-bold text-red-700 outline-none focus:border-red-500" value={filters.security} onChange={e => setFilters({...filters, security: e.target.value as any})}>
+                                <option value="all">Tất cả (Bình thường)</option>
+                                <option value="canh_bao">-- TẤT CẢ CẢNH BÁO --</option>
+                                <option value="vay_no">Vay nợ / Tín dụng đen</option>
+                                <option value="vi_pham">Vi phạm kỷ luật / Địa phương</option>
+                                <option value="ma_tuy">Sử dụng chất cấm</option>
+                                <option value="danh_bac">Đánh bạc / Cá độ</option>
+                                <option value="nuoc_ngoai">Yếu tố nước ngoài (Chung)</option>
+                                <option value="ho_chieu">Có hộ chiếu</option>
+                            </select>
+                        </div>
+                        <div className="pt-3 flex justify-end">
+                            <button onClick={resetFilters} className="text-xs text-slate-400 hover:text-slate-600 underline">Xóa bộ lọc</button>
+                        </div>
+                    </div>
+
                   </div>
                 </div>
               )}

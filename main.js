@@ -64,9 +64,7 @@ ipcMain.handle('system:updateFromFile', async () => {
   const result = await dialog.showOpenDialog(win, {
     title: 'Chọn file cài đặt phiên bản mới',
     properties: ['openFile'],
-    filters: [
-      { name: 'File cài đặt', extensions: ['exe'] }
-    ]
+    filters: [{ name: 'File cài đặt', extensions: ['exe'] }]
   });
 
   if (result.canceled || result.filePaths.length === 0) {
@@ -76,15 +74,21 @@ ipcMain.handle('system:updateFromFile', async () => {
   const installerPath = result.filePaths[0];
 
   try {
-    // Mở file cài đặt và đợi lệnh được gửi đi thành công
+    // Tùy chọn 1: Mở file nhưng không tách process (đơn giản)
     await shell.openPath(installerPath);
     
-    // Đợi 3 giây để đảm bảo tiến trình cài đặt được kích hoạt trước khi đóng app
+    // Tùy chọn 2 (Khuyên dùng): Dùng child_process để spawn installer độc lập
+    // const { spawn } = require('child_process');
+    // const child = spawn(installerPath, [], { detached: true, stdio: 'ignore' });
+    // child.unref(); 
+
+    // Thay vì quit sau 3s, hãy thông báo cho renderer để hiển thị UI "Đang cập nhật..."
+    // và để người dùng hoặc installer tự đóng app, HOẶC tăng thời gian chờ an toàn.
     setTimeout(() => {
       app.quit();
-    }, 3000);
+    }, 5000); // Tăng lên 5s để an toàn hơn cho các máy chậm
 
-    return { success: true, message: 'Đang khởi chạy bộ cài đặt, ứng dụng sẽ tự tắt sau 3 giây...' };
+    return { success: true, message: 'Đang khởi chạy bộ cài đặt...' };
   } catch (error) {
     return { success: false, message: 'Lỗi khi mở file: ' + error.message };
   }

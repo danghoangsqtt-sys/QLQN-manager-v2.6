@@ -51,10 +51,21 @@ class Store {
   }
 
   async login(password: string): Promise<boolean> {
-    const res = window.electronAPI ? await window.electronAPI.login(password) : password === '123456';
-    if (res) this.log('INFO', 'Người dùng đăng nhập thành công.');
-    return res;
-  }
+    // Kiểm tra API Electron có tồn tại không
+    if (window.electronAPI) {
+        const res = await window.electronAPI.login(password);
+        if (res) this.log('INFO', 'Người dùng đăng nhập thành công.');
+        return res;
+    } 
+    
+    // Chỉ cho phép fallback 123456 khi đang ở chế độ DEV (localhost)
+    if (import.meta.env.DEV) {
+         console.warn("Đang dùng mật khẩu debug: 123456");
+         return password === '123456';
+    }
+
+    return false; // Chặn login nếu chạy trên web production mà không có Electron
+}
 
   async changePassword(password: string): Promise<boolean> {
     if (window.electronAPI && window.electronAPI.changePassword) {

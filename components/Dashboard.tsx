@@ -1,3 +1,4 @@
+
 import { 
   Search, FileDown, LogOut, 
   Users, Trash2, Eye,
@@ -8,7 +9,8 @@ import {
   GraduationCap,
   FileText, MapPin, ChevronLeft, ChevronRight,
   FileEdit, AlertTriangle, CheckCircle2, X, Info, Loader2,
-  RefreshCcw, FilterX
+  RefreshCcw, FilterX, UserCheck, Heart, PlaneTakeoff, Wallet,
+  UserRoundCheck, Tags
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { MilitaryPersonnel, Unit } from '../types';
@@ -31,13 +33,12 @@ interface Toast {
 
 const ITEMS_PER_PAGE = 25;
 
-// Giá trị mặc định cho bộ lọc - Sort mặc định là Mới tạo (none) hoặc Tên (name)
 const DEFAULT_FILTERS: FilterCriteria = {
-  keyword: '', unitId: 'all', rank: 'all', position: 'all',
+  keyword: '', unitId: 'all', rank: 'all',
   political: 'all', security: 'all', 
-  education: 'all', marital: 'all', hasChildren: 'all',
+  education: 'all', marital: 'all',
   ethnicity: 'all', religion: 'all', hometown: '', ageRange: 'all',
-  sortBy: 'none' // Để mặc định là 'none' để hiển thị người mới nhập trước
+  sortBy: 'none'
 };
 
 const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
@@ -89,15 +90,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       
       setPersonnel(pList);
       setUnits(uList);
-      setDashboardStats(stats || {
-          total: pList.length,
-          party: 0,
-          securityAlert: 0,
-          educationHigh: 0,
-          ranks: {}
-      });
-      // Chỉ reset trang nếu danh sách rỗng hoặc filter thay đổi mạnh, 
-      // nhưng ở đây ta cứ set về 1 để an toàn khi sort/filter
+      setDashboardStats(stats);
       setCurrentPage(1);
     } catch (error) {
       addToast("Không thể tải dữ liệu hệ thống", "error");
@@ -109,7 +102,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const resetFilters = () => {
     setSearchTerm('');
     setFilters(DEFAULT_FILTERS);
-    addToast("Đã đặt lại bộ lọc", "info");
+    addToast("Đã đặt lại bộ lọc hệ thống", "info");
   };
 
   const handlePrint = async (person: MilitaryPersonnel) => {
@@ -120,7 +113,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             const cleanName = person.ho_ten.trim().replace(/\s+/g, '_');
             document.title = `Ho_so_${cleanName}_${person.cccd}`;
 
-            addToast(`Đang chuẩn bị bản in cho ${person.ho_ten.split(' ').pop()}...`, "info");
+            addToast(`Đang chuẩn bị bản in cho hồ sơ...`, "info");
             setPrintingPerson(fullData);
 
             setTimeout(() => {
@@ -148,7 +141,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     setIsProcessing(true);
     try {
       await db.deletePersonnel(confirmModal.personId);
-      addToast(`Đã xóa hồ sơ ${confirmModal.personName}`, "success");
+      addToast(`Đã xóa hồ sơ thành công`, "success");
       setConfirmModal({ isOpen: false });
       loadData();
     } catch (error) {
@@ -158,13 +151,26 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     }
   };
 
-  // Tính toán phân trang
   const paginatedPersonnel = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     return personnel.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [personnel, currentPage]);
 
   const totalPages = Math.ceil(personnel.length / ITEMS_PER_PAGE);
+
+  // Tính số lượng bộ lọc đang hoạt động (trừ mặc định)
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filters.rank !== 'all') count++;
+    if (filters.political !== 'all') count++;
+    if (filters.education !== 'all') count++;
+    if (filters.marital !== 'all') count++;
+    if (filters.ethnicity !== 'all') count++;
+    if (filters.ageRange !== 'all') count++;
+    if (filters.security !== 'all') count++;
+    if (filters.hometown !== '') count++;
+    return count;
+  }, [filters]);
 
   const StatCard = ({ title, value, icon: Icon, color, unitLabel, bgColor }: any) => (
     <div className={`bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between group hover:border-green-600/30 hover:shadow-md transition-all`}>
@@ -210,10 +216,9 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   return (
     <div className="h-screen bg-[#F0F2F5] flex font-sans text-slate-800 overflow-hidden relative text-sm">
       
-      {/* Container in ấn */}
       <ProfilePrintTemplate data={printingPerson} />
 
-      {/* TOAST NOTIFICATIONS */}
+      {/* TOASTS HUD */}
       <div className="fixed top-6 right-6 z-[1000] flex flex-col gap-3 no-print">
         {toasts.map(toast => (
           <div key={toast.id} className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border animate-slide-left min-w-[300px] ${
@@ -234,7 +239,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         ))}
       </div>
 
-      {/* CONFIRM DELETE MODAL */}
+      {/* DELETE MODAL */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 z-[900] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fade-in no-print">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-200 animate-slide-up">
@@ -244,7 +249,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               </div>
               <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight mb-2">Xác nhận xóa hồ sơ?</h3>
               <p className="text-sm text-slate-500 font-medium leading-relaxed mb-8">
-                Hành động này sẽ gỡ bỏ hoàn toàn quân nhân <span className="text-red-600 font-bold">"{confirmModal.personName}"</span> khỏi hệ thống. Dữ liệu không thể khôi phục.
+                Hành động này sẽ gỡ bỏ hoàn toàn quân nhân khỏi hệ thống. Thao tác không thể khôi phục.
               </p>
               <div className="flex gap-4">
                 <button 
@@ -268,7 +273,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         </div>
       )}
 
-      {/* SIDEBAR */}
+      {/* SIDEBAR NAVIGATION */}
       <div className="w-64 bg-[#14452F] flex flex-col shadow-xl shrink-0 z-20 no-print">
         <div className="p-6 text-center border-b border-white/5 bg-[#0d2d1f]">
           <div className="flex flex-col items-center gap-2 mb-1">
@@ -281,7 +286,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
              </h1>
           </div>
           <p className="text-[#D4AF37] text-[8px] font-black uppercase tracking-[0.25em] opacity-90 mt-2">
-            Powered by DHsystem
+            DHsystem v8.5
           </p>
         </div>
         
@@ -307,14 +312,15 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         </div>
       </div>
 
+      {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col min-h-0 bg-[#F0F2F5] no-print">
-        <header className="bg-white px-6 py-3 shrink-0 flex items-center justify-between gap-6 border-b border-slate-200 z-10 shadow-sm no-print h-16">
+        <header className="bg-white px-6 py-3 shrink-0 flex items-center justify-between gap-6 border-b border-slate-200 z-10 shadow-sm h-16">
           <div className="relative flex-1 max-w-2xl">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               ref={searchInputRef}
               type="text" 
-              placeholder="Tìm tên, CCCD, đơn vị, SĐT..."
+              placeholder="Tìm theo tên, CCCD, đơn vị, SĐT..."
               className="w-full pl-10 pr-4 py-2 bg-slate-100 border-none rounded-lg outline-none focus:ring-2 ring-green-600/20 font-medium text-sm text-slate-700 transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -336,7 +342,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto scroll-smooth bg-[#F0F2F5] no-print p-6">
+        <main className="flex-1 overflow-y-auto scroll-smooth p-6">
           <div className="max-w-7xl mx-auto flex flex-col h-full">
           
           {activeTab === 'overview' && (
@@ -351,51 +357,78 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 </div>
               )}
 
-              <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <div className="flex items-center gap-4">
-                   <h2 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2">
-                     <FileText size={16} className="text-green-700"/> Danh sách ({filters.unitId === 'all' && !filters.keyword ? dashboardStats?.total : personnel.length})
-                   </h2>
-                   <div className="h-4 w-[1px] bg-slate-300"></div>
-                   <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500 font-medium">Sắp xếp:</span>
-                      <select 
-                        className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-md px-2 py-1 outline-none focus:border-green-500"
-                        value={filters.sortBy}
-                        onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value as any }))}
-                      >
-                        <option value="none">Mới tạo (Mặc định)</option>
-                        <option value="name">Tên A-Z</option>
-                        <option value="age">Độ tuổi (Trẻ - Già)</option>
-                        <option value="enlistment">Nhập ngũ mới nhất</option>
-                      </select>
-                   </div>
+              {/* FILTER BAR NÂNG CẤP */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                  <div className="flex items-center gap-4">
+                    <h2 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2">
+                      <FileText size={16} className="text-green-700"/> Hồ sơ hiển thị ({personnel.length})
+                    </h2>
+                    <div className="h-4 w-[1px] bg-slate-300"></div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase">Sắp xếp:</span>
+                        <select 
+                          className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-md px-2 py-1 outline-none focus:border-green-500 font-bold"
+                          value={filters.sortBy}
+                          onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value as any }))}
+                        >
+                          <option value="none">Mặc định (ID)</option>
+                          <option value="name">Tên (A-Z Tiếng Việt)</option>
+                          <option value="age">Tuổi (Trẻ - Già)</option>
+                          <option value="rank">Cấp bậc (Cao - Thấp)</option>
+                          <option value="enlistment">Ngày nhập ngũ</option>
+                        </select>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {activeFiltersCount > 0 && (
+                       <button 
+                        onClick={resetFilters}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase border border-red-100 hover:bg-red-100 transition-all"
+                       >
+                         <FilterX size={14}/> Xóa {activeFiltersCount} bộ lọc
+                       </button>
+                    )}
+                    <button 
+                        onClick={() => setShowAdvancedFilter(!showAdvancedFilter)} 
+                        className={`px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 transition-all border relative ${showAdvancedFilter ? 'bg-green-50 text-green-700 border-green-200 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                    >
+                      <Filter size={14}/> 
+                      Bộ lọc chuyên sâu
+                      {activeFiltersCount > 0 && (
+                        <span className="absolute -top-2 -right-2 w-5 h-5 bg-green-600 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white shadow-sm">{activeFiltersCount}</span>
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                   <button 
-                      onClick={resetFilters}
-                      className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
-                      title="Xóa bộ lọc"
-                   >
-                     <FilterX size={16}/>
-                   </button>
-                   <button 
-                      onClick={() => setShowAdvancedFilter(!showAdvancedFilter)} 
-                      className={`px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 transition-all border ${showAdvancedFilter ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                   >
-                     <Filter size={14}/> Bộ lọc nâng cao
-                   </button>
-                </div>
+
+                {/* HIỂN THỊ CÁC BADGE BỘ LỌC ĐANG CHỌN */}
+                {activeFiltersCount > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-50">
+                    <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-tighter mr-1">
+                      <Tags size={12}/> Đang lọc:
+                    </div>
+                    {filters.rank !== 'all' && <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[9px] font-bold border border-blue-100">Bậc: {filters.rank}</span>}
+                    {filters.political !== 'all' && <span className="px-2 py-0.5 bg-red-50 text-red-700 rounded-full text-[9px] font-bold border border-red-100">Chính trị: {filters.political}</span>}
+                    {filters.education !== 'all' && <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-[9px] font-bold border border-purple-100">Học vấn: {filters.education}</span>}
+                    {filters.marital !== 'all' && <span className="px-2 py-0.5 bg-pink-50 text-pink-700 rounded-full text-[9px] font-bold border border-pink-100">GĐ: {filters.marital}</span>}
+                    {filters.security !== 'all' && <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-[9px] font-bold border border-amber-100">An ninh: {filters.security}</span>}
+                    {filters.hometown !== '' && <span className="px-2 py-0.5 bg-slate-50 text-slate-700 rounded-full text-[9px] font-bold border border-slate-200">Quê: {filters.hometown}</span>}
+                  </div>
+                )}
               </div>
 
               {showAdvancedFilter && (
-                <div className="bg-white p-6 rounded-xl border border-green-100 shadow-sm animate-slide-down">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {/* Nhóm Chính Trị & Học Vấn */}
+                <div className="bg-white p-6 rounded-xl border border-green-100 shadow-lg animate-slide-down">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                    {/* Cột 1: Chính trị & Học vấn */}
                     <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-[#14452F] font-bold mb-2">
+                            <UserCheck size={14}/> <span className="text-[10px] uppercase tracking-wider">Chính trị & Văn hóa</span>
+                        </div>
                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Chính trị</label>
-                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.political} onChange={e => setFilters({...filters, political: e.target.value as any})}>
+                            <label className="text-[9px] font-black text-slate-400 uppercase">Trình độ Đảng/Đoàn</label>
+                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none" value={filters.political} onChange={e => setFilters({...filters, political: e.target.value as any})}>
                                 <option value="all">Tất cả</option>
                                 <option value="dang_vien">Đảng viên</option>
                                 <option value="doan_vien">Đoàn viên</option>
@@ -403,118 +436,121 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                             </select>
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Học vấn</label>
-                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.education} onChange={e => setFilters({...filters, education: e.target.value as any})}>
+                            <label className="text-[9px] font-black text-slate-400 uppercase">Trình độ Học vấn</label>
+                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none" value={filters.education} onChange={e => setFilters({...filters, education: e.target.value as any})}>
                                 <option value="all">Tất cả</option>
-                                <option value="12_12">12/12</option>
-                                <option value="dai_hoc_cao_dang">Đại học / CĐ / Thạc sĩ</option>
-                                <option value="duoi_dai_hoc">Dưới ĐH / CĐ</option>
-                                <option value="da_tot_nghiep">Đã tốt nghiệp</option>
+                                <option value="dai_hoc_cao_dang">Đại học / Cao đẳng / Thạc sĩ</option>
+                                <option value="12_12">Tốt nghiệp 12/12</option>
+                                <option value="duoi_12">Dưới 12/12</option>
+                                <option value="da_tot_nghiep">Đã tốt nghiệp (Chung)</option>
                                 <option value="chua_tot_nghiep">Chưa tốt nghiệp</option>
                             </select>
                         </div>
                     </div>
 
-                    {/* Nhóm Gia Đình & Dân Số */}
+                    {/* Cột 2: Hôn nhân & Hoàn cảnh (SỬA LỖI VÀ NÂNG CẤP) */}
                     <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-2">
-                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Hôn nhân</label>
-                                <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.marital} onChange={e => setFilters({...filters, marital: e.target.value as any})}>
-                                    <option value="all">Tất cả</option>
-                                    <option value="da_vo">Đã kết hôn</option>
-                                    <option value="chua_vo">Độc thân</option>
-                                </select>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Con cái</label>
-                                <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.hasChildren} onChange={e => setFilters({...filters, hasChildren: e.target.value as any})}>
-                                    <option value="all">Tất cả</option>
-                                    <option value="co_con">Có con</option>
-                                    <option value="chua_con">Chưa có con</option>
-                                </select>
-                            </div>
+                        <div className="flex items-center gap-2 text-pink-600 font-bold mb-2">
+                            <Heart size={14}/> <span className="text-[10px] uppercase tracking-wider">Hôn nhân & Hoàn cảnh</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Dân tộc</label>
-                                <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.ethnicity} onChange={e => setFilters({...filters, ethnicity: e.target.value as any})}>
-                                    <option value="all">Tất cả</option>
-                                    <option value="kinh">Kinh</option>
-                                    <option value="dan_toc_thieu_so">Thiểu số</option>
-                                </select>
-                            </div>
-                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase">Tôn giáo</label>
-                                <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.religion} onChange={e => setFilters({...filters, religion: e.target.value as any})}>
-                                    <option value="all">Tất cả</option>
-                                    <option value="khong">Không</option>
-                                    <option value="co_ton_giao">Có đạo</option>
-                                </select>
-                            </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase">Tình trạng Gia đình</label>
+                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none" value={filters.marital} onChange={e => setFilters({...filters, marital: e.target.value as any})}>
+                                <option value="all">Tất cả các đối tượng</option>
+                                <option value="da_vo">Đã lập gia đình (Có vợ/chồng)</option>
+                                <option value="chua_vo">Độc thân (Chưa lập gia đình)</option>
+                                <option value="co_con">Đã có con nhỏ</option>
+                                <option value="co_nguoi_yeu">Đã có người yêu / Bạn gái</option>
+                                <option value="hoan_canh_dac_biet">Hoàn cảnh gia đình đặc biệt</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase">Dân tộc & Tôn giáo</label>
+                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none" value={filters.ethnicity} onChange={e => setFilters({...filters, ethnicity: e.target.value as any})}>
+                                <option value="all">Tất cả dân tộc</option>
+                                <option value="kinh">Người Kinh</option>
+                                <option value="dan_toc_thieu_so">Dân tộc thiểu số</option>
+                            </select>
                         </div>
                     </div>
 
-                    {/* Nhóm Xã Hội (Quê, Tuổi) */}
+                    {/* Cột 3: Nhân khẩu học */}
                     <div className="space-y-4">
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Quê quán / HKTT</label>
+                        <div className="flex items-center gap-2 text-blue-600 font-bold mb-2">
+                            <MapPin size={14}/> <span className="text-[10px] uppercase tracking-wider">Địa bàn & Độ tuổi</span>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase">Tìm theo Địa danh (Quê/HKTT)</label>
                             <input 
                                 type="text" 
-                                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500 placeholder:text-slate-300" 
-                                placeholder="Nhập địa danh..."
+                                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-blue-300" 
+                                placeholder="VD: Nghệ An, Hà Nội..."
                                 value={filters.hometown}
                                 onChange={e => setFilters({...filters, hometown: e.target.value})}
                             />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Độ tuổi</label>
-                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.ageRange} onChange={e => setFilters({...filters, ageRange: e.target.value as any})}>
-                                <option value="all">Tất cả</option>
-                                <option value="18_25">18 - 25 tuổi</option>
-                                <option value="26_30">26 - 30 tuổi</option>
-                                <option value="31_40">31 - 40 tuổi</option>
-                                <option value="tren_40">Trên 40 tuổi</option>
+                            <label className="text-[9px] font-black text-slate-400 uppercase">Phân loại Độ tuổi</label>
+                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none" value={filters.ageRange} onChange={e => setFilters({...filters, ageRange: e.target.value as any})}>
+                                <option value="all">Tất cả độ tuổi</option>
+                                <option value="18_25">Thanh niên (18 - 25 tuổi)</option>
+                                <option value="26_30">Trưởng thành (26 - 30 tuổi)</option>
+                                <option value="31_40">Trung niên (31 - 40 tuổi)</option>
+                                <option value="tren_40">Cấp cao (Trên 40 tuổi)</option>
                             </select>
                         </div>
                     </div>
 
-                    {/* Nhóm An Ninh */}
+                    {/* Cột 4: An ninh & Nguy cơ */}
                     <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-red-600 font-bold mb-2">
+                            <ShieldAlert size={14}/> <span className="text-[10px] uppercase tracking-wider">Cảnh báo An ninh</span>
+                        </div>
                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-red-400 uppercase">Tình hình An ninh & Kỷ luật</label>
-                            <select className="w-full p-2 bg-red-50 border border-red-200 rounded-lg text-xs font-bold text-red-700 outline-none focus:border-red-500" value={filters.security} onChange={e => setFilters({...filters, security: e.target.value as any})}>
-                                <option value="all">Tất cả (Bình thường)</option>
-                                <option value="canh_bao">-- TẤT CẢ CẢNH BÁO --</option>
-                                <option value="vay_no">Vay nợ / Tín dụng đen</option>
-                                <option value="vi_pham">Vi phạm kỷ luật / Địa phương</option>
-                                <option value="ma_tuy">Sử dụng chất cấm</option>
-                                <option value="danh_bac">Đánh bạc / Cá độ</option>
-                                <option value="nuoc_ngoai">Yếu tố nước ngoài (Chung)</option>
-                                <option value="ho_chieu">Có hộ chiếu</option>
+                            <label className="text-[9px] font-black text-red-400 uppercase">Lọc theo Nguy cơ bảo mật</label>
+                            <select className="w-full p-2 bg-red-50 border border-red-200 rounded-lg text-xs font-bold text-red-800 outline-none" value={filters.security} onChange={e => setFilters({...filters, security: e.target.value as any})}>
+                                <option value="all">Tất cả hồ sơ</option>
+                                <option value="canh_bao">Hồ sơ có dấu hiệu Cảnh báo</option>
+                                <option value="an_toan">Hồ sơ An toàn (Tuyệt đối)</option>
+                                <option value="vay_no">Có khoản Vay nợ / Kinh doanh</option>
+                                <option value="vay_no_gia_dinh_khong_biet">Nợ gia đình không hay biết</option>
+                                <option value="vi_pham_ky_luat">Có tiền sử Vi phạm kỷ luật</option>
+                                <option value="ma_tuy">Liên quan đến Ma túy</option>
+                                <option value="danh_bac">Liên quan Đánh bạc / Cá độ</option>
+                                <option value="nuoc_ngoai">Yếu tố quan hệ Nước ngoài</option>
+                                <option value="ho_chieu">Quân nhân đã có Hộ chiếu</option>
+                                <option value="dang_lam_dinh_cu">Đang làm thủ tục Định cư</option>
                             </select>
                         </div>
-                        <div className="pt-3 flex justify-end">
-                            <button onClick={resetFilters} className="text-xs text-slate-400 hover:text-slate-600 underline">Xóa bộ lọc</button>
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <button 
+                              onClick={resetFilters}
+                              className="py-2 bg-slate-100 text-slate-500 rounded-lg text-[9px] font-black uppercase hover:bg-red-50 hover:text-red-600 transition-all flex items-center justify-center gap-2"
+                          >
+                              <RefreshCcw size={12}/> Đặt lại
+                          </button>
+                          <button 
+                              onClick={() => setShowAdvancedFilter(false)}
+                              className="py-2 bg-[#14452F] text-white rounded-lg text-[9px] font-black uppercase hover:bg-green-800 transition-all flex items-center justify-center gap-2"
+                          >
+                              <CheckCircle2 size={12}/> Áp dụng
+                          </button>
                         </div>
                     </div>
-
                   </div>
                 </div>
               )}
 
+              {/* PERSONNEL LIST TABLE */}
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="divide-y divide-slate-100">
                   {paginatedPersonnel.map((p) => (
                     <div key={p.id} className="p-3 flex items-center gap-4 hover:bg-slate-50 transition-colors group">
                       <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-200 overflow-hidden shrink-0 relative">
-                          {p.anh_dai_dien && p.anh_dai_dien.startsWith('data:image') ? (
-                              <img 
-                                src={p.anh_dai_dien} 
-                                alt={p.ho_ten} 
-                                className="w-full h-full object-cover" 
-                                loading="lazy" 
-                              />
+                          {p.anh_thumb ? (
+                              <img src={p.anh_thumb} alt={p.ho_ten} className="w-full h-full object-cover" loading="lazy" />
+                          ) : p.anh_dai_dien ? (
+                              <img src={p.anh_dai_dien} alt={p.ho_ten} className="w-full h-full object-cover" loading="lazy" />
                           ) : (
                               <span className="text-green-800 font-bold text-lg">{p.ho_ten.charAt(0)}</span>
                           )}
@@ -535,16 +571,14 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                           </div>
 
                           <div className="md:col-span-3">
-                            <LeaveProgressBar 
-                              current={p.nghi_phep_thuc_te || 0} 
-                              total={p.nghi_phep_tham_chieu || 12} 
-                            />
+                            <LeaveProgressBar current={p.nghi_phep_thuc_te || 0} total={p.nghi_phep_tham_chieu || 12} />
                           </div>
 
                           <div className="md:col-span-4 flex flex-wrap items-center gap-2">
                             <span className="px-2 py-1 bg-green-50 text-green-700 rounded text-[10px] font-bold border border-green-100 flex items-center gap-1"><MapPin size={10}/> {p.don_vi}</span>
                             {p.vao_dang_ngay && <span className="px-2 py-1 bg-red-50 text-red-600 rounded text-[10px] font-bold border border-red-100 flex items-center gap-1"><ShieldCheck size={10}/> Đảng viên</span>}
                             {db.hasSecurityAlert(p) && <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded text-[10px] font-bold border border-amber-100 flex items-center gap-1"><ShieldAlert size={10}/> Cảnh báo</span>}
+                            {p.yeu_to_nuoc_ngoai?.ho_chieu?.da_co && <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-[10px] font-bold border border-blue-100 flex items-center gap-1"><PlaneTakeoff size={10}/> Hộ chiếu</span>}
                           </div>
                       </div>
 
@@ -552,11 +586,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                           <button 
                             onClick={async () => { 
                               const fullInfo = await db.getPersonnelById(p.id);
-                              if (fullInfo) {
-                                  setEditingPerson(fullInfo); 
-                                  setIsViewMode(false); 
-                                  setIsFormOpen(true); 
-                              }
+                              if (fullInfo) { setEditingPerson(fullInfo); setIsViewMode(false); setIsFormOpen(true); }
                             }} 
                             className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-all" 
                             title="Chỉnh sửa"
@@ -567,11 +597,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                           <button 
                             onClick={async () => { 
                               const fullInfo = await db.getPersonnelById(p.id);
-                              if (fullInfo) {
-                                  setEditingPerson(fullInfo); 
-                                  setIsViewMode(true); 
-                                  setIsFormOpen(true); 
-                              }
+                              if (fullInfo) { setEditingPerson(fullInfo); setIsViewMode(true); setIsFormOpen(true); }
                             }} 
                             className="p-2 text-slate-400 hover:text-green-700 hover:bg-green-50 rounded transition-all" 
                             title="Xem chi tiết"
@@ -591,38 +617,31 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                       </div>
                     </div>
                   ))}
-                  {paginatedPersonnel.length === 0 && (
-                    <div className="p-8 text-center text-slate-400 text-sm">Chưa có dữ liệu hiển thị.</div>
+                  {personnel.length === 0 && (
+                    <div className="p-20 text-center flex flex-col items-center">
+                        <FilterX size={48} className="text-slate-200 mb-4" />
+                        <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Không tìm thấy quân nhân phù hợp</p>
+                        <button onClick={resetFilters} className="mt-4 text-green-600 text-xs font-bold uppercase hover:underline">Xóa bộ lọc để quay lại</button>
+                    </div>
                   )}
                 </div>
               </div>
 
               {totalPages > 1 && (
                 <div className="flex justify-between items-center pt-4">
-                   <p className="text-xs text-slate-400">Trang {currentPage} / {totalPages}</p>
+                   <p className="text-xs text-slate-400 font-bold uppercase">Trang {currentPage} / {totalPages}</p>
                    <div className="flex items-center gap-2">
                     <button 
                       disabled={currentPage === 1}
                       onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      className="w-8 h-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-green-700 disabled:opacity-50"
+                      className="w-8 h-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-green-700 disabled:opacity-30"
                     >
                       <ChevronLeft size={16} />
                     </button>
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: totalPages }).map((_, i) => (
-                          <button 
-                            key={i+1}
-                            onClick={() => setCurrentPage(i+1)}
-                            className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition-all ${currentPage === i+1 ? 'bg-green-700 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
-                          >
-                            {i+1}
-                          </button>
-                      ))}
-                    </div>
                     <button 
                       disabled={currentPage === totalPages}
                       onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                      className="w-8 h-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-green-700 disabled:opacity-50"
+                      className="w-8 h-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-green-700 disabled:opacity-30"
                     >
                       <ChevronRight size={16} />
                     </button>
@@ -639,9 +658,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         </main>
       </div>
 
-      {showGuide && (
-        <UserGuide onClose={() => setShowGuide(false)} />
-      )}
+      {showGuide && <UserGuide onClose={() => setShowGuide(false)} />}
 
       {isFormOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm overflow-y-auto no-print">
@@ -653,26 +670,6 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           />
         </div>
       )}
-      
-      <style>{`
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
-        .animate-slide-down { animation: slide-down 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .animate-slide-up { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .animate-slide-left { animation: slide-left 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .animate-shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
-        
-        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slide-down { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes slide-up { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes slide-left { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
-        @keyframes shake {
-          10%, 90% { transform: translate3d(-1px, 0, 0); }
-          20%, 80% { transform: translate3d(2px, 0, 0); }
-          30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
-          40%, 60% { transform: translate3d(4px, 0, 0); }
-        }
-      `}</style>
     </div>
   );
 };

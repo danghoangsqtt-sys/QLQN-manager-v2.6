@@ -1,42 +1,37 @@
-// Hàm tạo thumbnail từ base64 string
-export const createThumbnail = (base64Image: string, maxWidth: number = 64, quality: number = 0.7): Promise<string> => {
+// File: utils/imageHelper.ts
+export const createThumbnail = (base64String: string, maxWidth: number = 200): Promise<string> => {
   return new Promise((resolve) => {
-    // Nếu không có ảnh, trả về rỗng
-    if (!base64Image) {
-        resolve('');
-        return;
-    }
-
     const img = new Image();
-    img.src = base64Image;
+    img.src = base64String;
+    img.crossOrigin = "anonymous";
 
     img.onload = () => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
 
       if (!ctx) {
-        resolve('');
+        resolve(base64String); // Nếu lỗi, trả về ảnh gốc
         return;
       }
 
-      // Tính toán tỷ lệ để giữ nguyên khung hình (aspect ratio)
-      const scale = maxWidth / img.width;
-      const width = maxWidth;
-      const height = img.height * scale;
+      // Tính toán tỷ lệ để ảnh không bị méo
+      const scaleFactor = maxWidth / img.width;
+      const newWidth = maxWidth;
+      const newHeight = img.height * scaleFactor;
 
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = newWidth;
+      canvas.height = newHeight;
 
-      // Vẽ ảnh nhỏ lên canvas
-      ctx.drawImage(img, 0, 0, width, height);
+      // Vẽ ảnh mới lên canvas
+      ctx.drawImage(img, 0, 0, newWidth, newHeight);
 
-      // Xuất ra base64 mới (nhẹ hơn rất nhiều)
-      const thumbnailBase64 = canvas.toDataURL('image/jpeg', quality);
-      resolve(thumbnailBase64);
+      // Xuất ra dạng base64 chất lượng thấp hơn (0.7) để nhẹ máy
+      const thumbnailData = canvas.toDataURL('image/jpeg', 0.7);
+      resolve(thumbnailData);
     };
 
     img.onerror = () => {
-      resolve('');
+      resolve(base64String); // Nếu lỗi load ảnh, trả về ảnh gốc
     };
   });
 };

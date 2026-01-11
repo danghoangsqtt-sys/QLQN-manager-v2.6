@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MilitaryPersonnel, Unit, CustomField } from '../types';
 import { db } from '../store';
-import { Trash2, Plus, Camera, X, Calendar as CalendarIcon } from 'lucide-react';
-
+import { Trash2, Plus, Camera, X, Calendar as CalendarIcon, AlertTriangle, CheckCircle, Info, ShieldAlert } from 'lucide-react';
+import { createThumbnail } from '../utils/imageHelper';
 interface PersonnelFormProps {
   units: Unit[];
   onClose: () => void;
@@ -163,9 +163,48 @@ const VietnamDateInput: React.FC<{
   );
 };
 
+// --- PHẦN MỚI: CẤU HÌNH TOAST (HUD STYLE) ---
+type ToastType = 'success' | 'error' | 'warning' | 'info';
+interface ToastMessage { id: number; type: ToastType; title: string; message: string; }
+
+const MilitaryToast: React.FC<{ toasts: ToastMessage[]; removeToast: (id: number) => void }> = ({ toasts, removeToast }) => {
+  return (
+    <div className="absolute top-4 right-4 z-[300] flex flex-col gap-3 w-80 pointer-events-none">
+      {toasts.map((toast) => (
+        <div key={toast.id} className={`pointer-events-auto relative overflow-hidden bg-[#0F291E] border-l-4 shadow-2xl rounded-sm transform transition-all duration-500 hover:scale-105 ${toast.type === 'error' ? 'border-red-600' : toast.type === 'success' ? 'border-yellow-500' : 'border-blue-500'}`}>
+          {/* Hiệu ứng quét ngang (Scanline) */}
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-0 bg-[length:100%_2px,3px_100%] pointer-events-none"></div>
+          <div className="p-4 flex gap-3 relative z-10">
+            <div className={`mt-1 ${toast.type === 'error' ? 'text-red-500' : toast.type === 'success' ? 'text-yellow-500' : 'text-blue-400'}`}>
+               {toast.type === 'success' && <CheckCircle size={20} />}
+               {toast.type === 'error' && <AlertTriangle size={20} />}
+               {toast.type === 'info' && <Info size={20} />}
+            </div>
+            <div className="flex-1">
+              <h4 className={`text-xs font-black uppercase tracking-widest ${toast.type === 'error' ? 'text-red-500' : toast.type === 'success' ? 'text-yellow-500' : 'text-blue-400'}`}>{toast.title}</h4>
+              <p className="text-[11px] font-mono text-gray-300 mt-1 leading-tight">{toast.message}</p>
+            </div>
+            <button onClick={() => removeToast(toast.id)} className="text-gray-500 hover:text-white transition-colors self-start"><X size={14} /></button>
+          </div>
+          {/* Thanh thời gian chạy bên dưới */}
+          <div className={`h-0.5 w-full bg-gray-700/50 absolute bottom-0 left-0`}>
+             <div className={`h-full transition-all duration-[4000ms] ease-linear w-0 ${toast.type === 'error' ? 'bg-red-600' : 'bg-yellow-500'}`} style={{width: '100%'}}></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialData, isViewMode = false }) => {
   const [activeTab, setActiveTab] = useState(1);
+  // --- STATE CHO TOAST ---
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const showToast = (type: ToastType, title: string, message: string) => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, type, title, message }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000); // Tự tắt sau 4s
+  };
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -187,19 +226,47 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
     }
   }, [formData.don_vi_id]);
 
+  // --- HÀM XỬ LÝ ẢNH MỚI (ĐÃ CÓ TẠO THUMBNAIL) ---
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (isViewMode) return;
     const file = event.target.files?.[0];
+    
     if (file) {
+      // 1. Kiểm tra dung lượng (5MB)
       if (file.size > 5 * 1024 * 1024) {
-        alert("File ảnh quá lớn (Tối đa 5MB)");
+        showToast('error', 'LỖI TẢI ẢNH', 'Kích thước file quá lớn (Tối đa 5MB).');
         return;
       }
+
       const reader = new FileReader();
-      reader.onload = (e) => {
+      
+      // 2. Xử lý khi đọc xong file
+      reader.onload = async (e) => {
         const base64String = e.target?.result as string;
-        setFormData(prev => ({ ...prev, anh_dai_dien: base64String }));
+        
+        try {
+            // Thông báo đang xử lý (vì tạo thumb có thể mất 1 chút thời gian)
+            showToast('info', 'ĐANG XỬ LÝ', 'Đang tạo ảnh thu nhỏ...');
+
+            // Gọi hàm tạo thumbnail từ Bước 1
+            const thumbString = await createThumbnail(base64String, 200);
+
+            // Lưu cả ảnh gốc và ảnh thumb vào form
+            setFormData(prev => ({ 
+                ...prev, 
+                anh_dai_dien: base64String,
+                anh_thumb: thumbString  // <--- Dòng quan trọng mới thêm
+            }));
+
+            showToast('success', 'THÀNH CÔNG', 'Đã cập nhật ảnh đại diện.');
+        } catch (error) {
+            console.error(error);
+            // Nếu lỗi tạo thumb thì vẫn lưu ảnh gốc
+            setFormData(prev => ({ ...prev, anh_dai_dien: base64String }));
+            showToast('warning', 'CẢNH BÁO', 'Đã lưu ảnh nhưng không tạo được thumbnail.');
+        }
       };
+      
       reader.readAsDataURL(file);
     }
   };
@@ -207,8 +274,9 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   const handleSave = () => {
     if (isViewMode) return;
 
+    // Kiểm tra dữ liệu
     if (!formData.ho_ten || !formData.cccd || !formData.don_vi_id) {
-      alert('Vui lòng nhập đầy đủ các thông tin bắt buộc (*): Họ tên, CCCD, Đơn vị');
+      showToast('error', 'THIẾU THÔNG TIN', 'Vui lòng điền các trường bắt buộc (*): Họ tên, CCCD, Đơn vị.');
       return;
     }
     
@@ -219,15 +287,17 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
         try {
             if (initialData && initialData.id) {
                 await db.updatePersonnel(initialData.id, finalData);
+                showToast('success', 'CẬP NHẬT THÀNH CÔNG', `Đã lưu hồ sơ đồng chí ${finalData.ho_ten}.`);
             } else {
                 await db.addPersonnel({ 
                     ...finalData as MilitaryPersonnel, 
                     id: Date.now().toString(), 
                 });
+                showToast('success', 'THÊM MỚI THÀNH CÔNG', `Đã tạo hồ sơ cho đồng chí ${finalData.ho_ten}.`);
             }
-            onClose();
-        } catch (e) {
-            alert('Lỗi khi lưu hồ sơ: ' + e);
+            setTimeout(() => onClose(), 1500); // Đợi 1.5s để người dùng đọc thông báo rồi mới đóng
+        } catch (e: any) {
+            showToast('error', 'LỖI HỆ THỐNG', 'Không thể lưu vào CSDL: ' + e.message);
         }
     };
     save();
@@ -289,10 +359,21 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
 
   return (
     <div className="bg-[#f4f6f8] w-full max-w-7xl max-h-[95vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col border-2 border-[#14452F] animate-fade-in relative z-[200]">
-      {/* Header trạng thái */}
+      
+      {/* --- HIỂN THỊ TOAST (HUD) TẠI ĐÂY --- */}
+      <MilitaryToast toasts={toasts} removeToast={(id) => setToasts(t => t.filter(x => x.id !== id))} />
+
+      {/* --- DẢI BĂNG BẢO MẬT (SECURITY TAPE) --- */}
       {isViewMode && (
-          <div className="bg-yellow-100 text-yellow-800 px-4 py-2 text-center text-xs font-bold uppercase tracking-widest border-b border-yellow-200">
-              Đang ở chế độ xem chi tiết (Không thể chỉnh sửa)
+          <div className="w-full h-8 flex items-center justify-center overflow-hidden relative shadow-md"
+            style={{ background: 'repeating-linear-gradient(45deg, #FCD34D, #FCD34D 10px, #1F2937 10px, #1F2937 20px)' }}>
+              <div className="bg-white/90 px-6 py-0.5 rounded-full border-2 border-black z-10 shadow-lg">
+                 <span className="text-black font-black uppercase text-[10px] tracking-[0.2em] flex items-center gap-2">
+                    <ShieldAlert size={12} className="text-red-600"/>
+                    Chế độ Chỉ Xem - Restricted View Mode
+                    <ShieldAlert size={12} className="text-red-600"/>
+                 </span>
+              </div>
           </div>
       )}
 
@@ -306,7 +387,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           { id: 5, label: '5. Lịch Sử & Tệ Nạn', danger: true },
           { id: 6, label: '6. Tài Chính & Sức Khỏe', danger: true },
           { id: 7, label: '7. Cam Kết & Nguyện Vọng' },
-          { id: 8, label: '8. Thông tin bổ sung' },
+          
         ].map(tab => (
           <button
             key={tab.id}
@@ -959,28 +1040,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                 </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* --- TAB 8: THÔNG TIN BỔ SUNG --- */}
-        {activeTab === 8 && (
-          <div className="animate-fade-in space-y-10">
-            <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Thông tin bổ sung</h3>
-            <div className="p-5 bg-white border border-gray-100 rounded-xl text-[11px] font-bold text-gray-500 mb-8 flex items-center gap-3 shadow-inner">
-               Các trường dữ liệu này được yêu cầu thêm bởi đơn vị.
-            </div>
-            {customFields.length === 0 ? (
-               <div className="py-20 text-center text-gray-300 font-bold uppercase text-xs tracking-widest border-4 border-dashed rounded-[3rem]">Không có thông tin bổ sung cho đơn vị này.</div>
-            ) : (
-               <div className="grid grid-cols-2 gap-8">
-                {customFields.map(f => (
-                  <div key={f.id} className="p-6 bg-gray-50 border border-gray-100 rounded-[2rem] shadow-sm">
-                    <label className="block text-[10px] font-black uppercase text-gray-400 mb-2">{f.display_name} {f.is_required && <span className="text-red-500">*</span>}</label>
-                    <input disabled={isViewMode} type="text" className={inputClassBold} value={formData.custom_data?.[f.field_key] || ''} onChange={e => setFormData({...formData, custom_data: {...formData.custom_data, [f.field_key]: e.target.value}})} />
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
 

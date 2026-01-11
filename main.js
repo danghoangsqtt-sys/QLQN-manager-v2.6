@@ -16,9 +16,7 @@ if (!fs.existsSync(settingsPath)) fs.writeFileSync(settingsPath, '{}', 'utf8');
 const readSecureSettings = () => {
   try {
     return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-  } catch (e) {
-    return {};
-  }
+  } catch (e) { return {}; }
 };
 
 const writeSecureSettings = (data) => fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
@@ -29,12 +27,12 @@ function hashPassword(password) {
 
 // --- IPC HANDLERS ---
 
-// 1. Auth Handlers
+// 1. Xử lý Đăng nhập
 ipcMain.handle('auth:login', (_, p) => {
   const settings = readSecureSettings();
   let stored = settings['admin_password'];
   
-  // Nếu chưa có mật khẩu (lần đầu chạy)
+  // Nếu chưa có mật khẩu (lần đầu chạy), mặc định là 123456
   if (!stored) {
       if (p === '123456') {
           settings['admin_password'] = hashPassword('123456');
@@ -46,6 +44,7 @@ ipcMain.handle('auth:login', (_, p) => {
   return hashPassword(p) === stored;
 });
 
+// 2. Đổi mật khẩu
 ipcMain.handle('auth:changePassword', (_, p) => {
   const settings = readSecureSettings();
   settings['admin_password'] = hashPassword(p);
@@ -53,17 +52,14 @@ ipcMain.handle('auth:changePassword', (_, p) => {
   return true;
 });
 
-
-// 3. System Handlers (Update Logic đã sửa)
+// 3. Cập nhật hệ thống (Offline qua file)
 ipcMain.handle('system:updateFromFile', async () => {
   const win = BrowserWindow.getFocusedWindow();
   
   const result = await dialog.showOpenDialog(win, {
-    title: 'Chọn file cài đặt phiên bản mới',
+    title: 'Chọn file cài đặt phiên bản mới (.exe)',
     properties: ['openFile'],
-    filters: [
-      { name: 'File cài đặt', extensions: ['exe'] }
-    ]
+    filters: [{ name: 'File cài đặt', extensions: ['exe'] }]
   });
 
   if (result.canceled || result.filePaths.length === 0) {
@@ -73,11 +69,10 @@ ipcMain.handle('system:updateFromFile', async () => {
   const installerPath = result.filePaths[0];
 
   try {
-    // Mở file cài đặt và đợi lệnh được gửi đi thành công
+    // Mở file setup mới
     await shell.openPath(installerPath);
     
-    // [ĐÃ SỬA LỖI] Tăng thời gian chờ từ 500ms lên 3000ms (3 giây)
-    // Để đảm bảo tiến trình con (installer) đã nhận lệnh từ OS trước khi App đóng
+    // Đợi 3s để file setup kịp khởi chạy rồi đóng App hiện tại
     setTimeout(() => {
       app.quit();
     }, 3000);
@@ -94,24 +89,25 @@ function createWindow() {
     width: 1400,
     height: 900,
     backgroundColor: '#14452F',
-    show: false,
-    icon: path.join(__dirname, 'public/icon.ico'),
+    show: false, // Ẩn lúc mới tạo để tránh nháy trắng
+    icon: path.join(__dirname, 'public/icon.ico'), // Icon ứng dụng
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
-      webSecurity: true, // Luôn bật webSecurity
+      sandbox: false, // Tắt sandbox để dùng fs trong preload nếu cần (hoặc cấu hình chặt hơn)
+      webSecurity: true,
     }
   });
 
-  // FIX: Cấu hình CSP chặt chẽ hơn cho Production
+  // Cấu hình CSP (Content Security Policy)
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    // Dev: Cho phép lỏng lẻo để hot-reload hoạt động
+    // Dev: Cho phép kết nối lỏng lẻo (ws, http)
     const devCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: http: https:;";
     
-    // Prod: CHẶN 'unsafe-eval' để ngăn chặn XSS tấn công, chỉ cho phép script nội bộ
-    const prodCSP = "default-src 'self' 'unsafe-inline' data: blob: file: https:;"; 
+    // Prod: CHẶN 'unsafe-eval' và các kết nối ra ngoài (chỉ cho phép file://, data:, blob:)
+    // Lưu ý: Đã bỏ 'unsafe-eval' vì chúng ta build bằng Vite (đã biên dịch)
+    const prodCSP = "default-src 'self' 'unsafe-inline' data: blob: file:;"; 
 
     callback({
       responseHeaders: {
@@ -124,12 +120,14 @@ function createWindow() {
   if (isDev) {
     console.log('Running in Development Mode');
     win.loadURL('http://localhost:3000'); 
+    // win.webContents.openDevTools(); // Bỏ comment nếu muốn bật debug
   } else {
     console.log('Running in Production Mode');
+    // Load file index.html từ thư mục dist sau khi build
     win.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
 
-  win.setMenuBarVisibility(false);
+  win.setMenuBarVisibility(false); // Ẩn thanh menu mặc định
 
   win.once('ready-to-show', () => {
     win.show();
@@ -139,7 +137,7 @@ function createWindow() {
 // --- APP LIFECYCLE ---
 app.whenReady().then(() => {
   createWindow();
-  // Giữ UserAgent custom để định danh
+  // Đặt UserAgent riêng để nhận diện
   session.defaultSession.setUserAgent(session.defaultSession.getUserAgent() + ' QNManager/7.0');
 });
 

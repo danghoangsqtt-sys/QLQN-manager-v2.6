@@ -1,23 +1,16 @@
-
 <!DOCTYPE html>
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <title>QN-Manager Pro</title>
+  <!-- CSP: Cho phép script nội bộ, chặn script lạ. -->
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QN-Manager Pro - Hệ thống Quản lý Quân nhân</title>
   
-  <!-- Thư viện giao diện và phông chữ -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-  
-  <!-- Thư viện lõi để chạy .tsx trực tiếp -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-
+  <!-- CSS cho màn hình Loading (Phải để inline để hiện ngay lập tức) -->
   <style>
-    :root { --primary: #14452f; --accent: #d4af37; --bg: #f4f6f8; }
-    body { margin: 0; font-family: 'Roboto', sans-serif; background: var(--primary); color: #fff; overflow: hidden; }
+    :root { --primary: #14452f; --accent: #d4af37; }
+    body { margin: 0; background: var(--primary); overflow: hidden; }
     #loading-screen {
       position: fixed; inset: 0; display: flex; flex-direction: column;
       align-items: center; justify-content: center; z-index: 9999;
@@ -28,47 +21,21 @@
       border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
   </style>
-
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react-dom": "https://esm.sh/react-dom@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
-    "lucide-react": "https://esm.sh/lucide-react@0.454.0?deps=react@18.2.0",
-    "dexie": "https://esm.sh/dexie@4.0.8",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
-  }
-}
-</script>
 </head>
 <body>
+  <!-- Màn hình chờ khi ứng dụng đang tải -->
   <div id="loading-screen">
-    <div class="loader mb-4"></div>
-    <div id="loading-text" class="text-[10px] font-black uppercase tracking-[0.3em] text-white/50">Đang khởi tạo hệ thống...</div>
+    <div class="loader mb-4" style="margin-bottom: 1rem;"></div>
+    <div style="font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.3em; color: rgba(255,255,255,0.5); font-family: sans-serif;">
+      Đang khởi tạo hệ thống...
+    </div>
   </div>
 
+  <!-- Nơi React sẽ render ứng dụng vào -->
   <div id="root"></div>
 
-  <!-- Lưu ý: Dùng text/babel để trình duyệt hiểu code React/JSX trong file .tsx -->
-  <script type="text/babel" data-type="module" src="./index.tsx"></script>
-
-  <script>
-    // Tự động báo lỗi nếu script không chạy được
-    window.onerror = function(msg, url, line) {
-      const text = document.getElementById('loading-text');
-      if (text) {
-        text.innerHTML = "LỖI HỆ THỐNG: " + msg;
-        text.classList.add('text-red-400');
-      }
-      return false;
-    };
-  </script>
+  <!-- QUAN TRỌNG: Dùng type="module" để Vite biên dịch và bundle code -->
+  <script type="module" src="/index.tsx"></script>
 </body>
 </html>

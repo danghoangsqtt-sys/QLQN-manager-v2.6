@@ -1,3 +1,68 @@
+/* 1. Chỉ thị bắt buộc của Tailwind CSS */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 2. Cấu hình Font chữ & CSS cơ bản */
+:root {
+  --primary: #14452f;
+  --accent: #d4af37;
+  --bg: #f4f6f8;
+}
+
+body {
+  margin: 0;
+  /* Ưu tiên font hệ thống nếu không có Roboto offline */
+  font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--primary);
+  color: #fff;
+  overflow: hidden; /* Chặn cuộn body, để App tự quản lý cuộn */
+}
+
+/* 3. Tùy chỉnh thanh cuộn (Scrollbar) phong cách quân sự */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a1f16;
+  border-left: 1px solid #14452F;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #22c55e;
+  border-radius: 0px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #15803d;
+  box-shadow: 0 0 10px #22c55e;
+}
+
+/* 4. Các animation tiện ích */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-in-down {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+.animate-fade-in-down { animation: fade-in-down 0.5s ease-out forwards; }
+.animate-shake { animation: shake 0.3s ease-in-out; }
+
+/* Class ẩn thanh cuộn nhưng vẫn cuộn được (cho Firefox/Chrome) */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

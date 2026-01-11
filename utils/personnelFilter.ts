@@ -1,6 +1,6 @@
-
 import { MilitaryPersonnel } from '../types';
 
+// Mở rộng Type cho Filter để hỗ trợ các trường sâu
 export interface FilterCriteria {
   keyword: string;       
   unitId: string;        
@@ -11,7 +11,8 @@ export interface FilterCriteria {
   education: 'all' | 'dai_hoc_cao_dang' | '12_12' | 'duoi_12' | 'da_tot_nghiep' | 'chua_tot_nghiep';
   
   // 2. Nhóm Gia đình & Hôn nhân
-  marital: 'all' | 'da_vo' | 'chua_vo' | 'co_con' | 'co_nguoi_yeu' | 'hoan_canh_dac_biet';
+  marital: 'all' | 'da_vo' | 'chua_vo' | 'co_con' | 'co_nguoi_yeu' | 'hoan_canh_dac_biet' | 'song_mot_minh';
+  economic: 'all' | 'kha_gia' | 'kho_khan' | 'ho_ngheo';
   
   // 3. Nhóm Nhân khẩu học
   ethnicity: 'all' | 'kinh' | 'dan_toc_thieu_so';
@@ -19,23 +20,23 @@ export interface FilterCriteria {
   ageRange: 'all' | '18_25' | '26_30' | '31_40' | 'tren_40';
   hometown: string;
   
-  // 4. Nhóm An ninh & Vi phạm
-  security: 'all' | 'canh_bao' | 'an_toan' | 'vay_no' | 'vay_no_gia_dinh_khong_biet' | 'vi_pham_ky_luat' | 'ma_tuy' | 'danh_bac' | 'nuoc_ngoai' | 'ho_chieu' | 'dang_lam_dinh_cu';
+  // 4. Nhóm An ninh & Vi phạm (Nâng cấp)
+  security: 'all' | 'canh_bao' | 'an_toan' | 'vay_no' | 'vi_pham_ky_luat' | 'vi_pham_phap_luat' | 'ma_tuy' | 'danh_bac' | 'nuoc_ngoai';
   
-  // 5. Sắp xếp
+  // 5. Nhóm Sức khỏe & Kinh doanh (Mới)
+  health: 'all' | 'loai_1' | 'loai_2' | 'loai_3_4_5' | 'co_benh_nen';
+  business: 'all' | 'co_kinh_doanh' | 'khong_kinh_doanh';
+
+  // 6. Sắp xếp
   sortBy: 'none' | 'name' | 'age' | 'rank' | 'enlistment';
 }
 
 /**
- * Chuẩn hóa chuỗi tiếng Việt để so sánh chính xác
- * Chuyển về chữ thường, chuẩn NFC và xóa khoảng trắng thừa
+ * Chuẩn hóa chuỗi tiếng Việt: chữ thường, NFC, xóa khoảng trắng thừa
  */
-const normalizeStr = (str: string): string => {
+const normalizeStr = (str: string | undefined | null): string => {
   if (!str) return '';
-  return str
-    .toLowerCase()
-    .normalize('NFC')
-    .trim();
+  return str.toLowerCase().normalize('NFC').trim();
 };
 
 const getAge = (dobString: string): number => {
@@ -51,17 +52,26 @@ const getAge = (dobString: string): number => {
   return age;
 };
 
+// Logic xác định hồ sơ có cảnh báo an ninh (Deep Check)
 export const hasSecurityAlert = (p: MilitaryPersonnel): boolean => {
-  return (
-    !!p.tai_chinh_suc_khoe?.vay_no?.co_khong ||
-    !!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong ||
-    !!p.lich_su_vi_pham?.ma_tuy?.co_khong ||
-    !!p.lich_su_vi_pham?.danh_bac?.co_khong ||
-    (p.yeu_to_nuoc_ngoai?.than_nhan?.length || 0) > 0 ||
-    (p.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length || 0) > 0 ||
-    !!p.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.dang_lam_thu_tuc ||
-    !!p.vi_pham_nuoc_ngoai
-  );
+    const pAny = p as any; // Cast to any để truy cập các trường mở rộng
+    
+    // Check mảng vi phạm kỷ luật mới
+    const hasDisciplineHistory = Array.isArray(pAny.lich_su_vi_pham?.ky_luat_quan_doi) && pAny.lich_su_vi_pham.ky_luat_quan_doi.length > 0;
+    // Check mảng vi phạm pháp luật mới
+    const hasLegalHistory = Array.isArray(pAny.lich_su_vi_pham?.vi_pham_phap_luat) && pAny.lich_su_vi_pham.vi_pham_phap_luat.length > 0;
+
+    return (
+        !!p.tai_chinh_suc_khoe?.vay_no?.co_khong ||
+        !!p.lich_su_vi_pham?.ma_tuy?.co_khong ||
+        !!p.lich_su_vi_pham?.danh_bac?.co_khong ||
+        hasDisciplineHistory ||
+        hasLegalHistory ||
+        (p.yeu_to_nuoc_ngoai?.than_nhan?.length || 0) > 0 ||
+        (p.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length || 0) > 0 ||
+        !!p.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.dang_lam_thu_tuc ||
+        !!p.vi_pham_nuoc_ngoai
+    );
 };
 
 export const filterPersonnel = (
@@ -69,87 +79,85 @@ export const filterPersonnel = (
   criteria: FilterCriteria
 ): MilitaryPersonnel[] => {
   
-  let results = list.filter(p => {
-    // A. Lọc theo từ khóa cơ bản (Tìm kiếm thông minh)
+  let results = [...list];
+
+  results = results.filter(p => {
+    const pAny = p as any; // Sử dụng pAny để truy cập cấu trúc dữ liệu mới linh hoạt
+
+    // A. TỪ KHÓA
     if (criteria.keyword) {
       const kw = normalizeStr(criteria.keyword);
       const match = 
         normalizeStr(p.ho_ten).includes(kw) || 
-        normalizeStr(p.ten_khac || '').includes(kw) ||
+        normalizeStr(p.ten_khac).includes(kw) ||
         p.cccd.includes(kw) || 
         (p.sdt_rieng || '').includes(kw) ||
         normalizeStr(p.don_vi).includes(kw);
       if (!match) return false;
     }
 
-    // B. Cấp bậc
+    // B. ĐƠN VỊ & CẤP BẬC
+    if (criteria.unitId && criteria.unitId !== 'all') { /* Logic handled by Store usually */ }
     if (criteria.rank && criteria.rank !== 'all' && p.cap_bac !== criteria.rank) return false;
 
-    // C. Nhóm Chính trị
+    // C. CHÍNH TRỊ
     if (criteria.political !== 'all') {
-      if (criteria.political === 'dang_vien' && !p.vao_dang_ngay) return false;
-      if (criteria.political === 'doan_vien' && (!p.ngay_vao_doan || p.vao_dang_ngay)) return false;
-      if (criteria.political === 'quan_chung' && (p.vao_dang_ngay || p.ngay_vao_doan)) return false;
+      const isDangVien = !!p.vao_dang_ngay;
+      const isDoanVien = !!p.ngay_vao_doan && !isDangVien;
+      if (criteria.political === 'dang_vien' && !isDangVien) return false;
+      if (criteria.political === 'doan_vien' && !isDoanVien) return false;
+      if (criteria.political === 'quan_chung' && (isDangVien || isDoanVien)) return false;
     }
 
-    // D. Nhóm Học vấn
+    // D. HỌC VẤN
     if (criteria.education !== 'all') {
-      const edu = normalizeStr(p.trinh_do_van_hoa || '');
+      const edu = normalizeStr(p.trinh_do_van_hoa);
+      const isHighEdu = edu.includes('đại học') || edu.includes('cao đẳng') || edu.includes('thạc sĩ');
       if (criteria.education === 'da_tot_nghiep' && !p.da_tot_nghiep) return false;
       if (criteria.education === 'chua_tot_nghiep' && p.da_tot_nghiep) return false;
-      if (criteria.education === 'dai_hoc_cao_dang' && !edu.includes('đại học') && !edu.includes('cao đẳng') && !edu.includes('thạc sĩ')) return false;
+      if (criteria.education === 'dai_hoc_cao_dang' && !isHighEdu) return false;
       if (criteria.education === '12_12' && !edu.includes('12/12')) return false;
-      if (criteria.education === 'duoi_12' && edu !== '' && !edu.includes('12/12') && !edu.includes('đại học') && !edu.includes('cao đẳng')) return false;
+      if (criteria.education === 'duoi_12' && edu !== '' && !edu.includes('12/12') && !isHighEdu) return false;
     }
 
-    // E. NHÓM HÔN NHÂN & GIA ĐÌNH (ĐÃ SỬA LỖI)
+    // E. HÔN NHÂN & GIA ĐÌNH (Logic khớp với Form Mới)
     if (criteria.marital !== 'all') {
-      const familyList = p.quan_he_gia_dinh?.cha_me_anh_em || [];
-      
-      // 1. Kiểm tra trạng thái kết hôn
-      const hasSpouseInList = familyList.some(m => {
-        const rel = normalizeStr(m.quan_he);
-        return rel === 'vợ' || rel === 'chồng';
-      });
-      // Ưu tiên kiểm tra trường đối tượng vợ riêng hoặc trong list thân nhân
-      const isMarried = (p.quan_he_gia_dinh?.vo && p.quan_he_gia_dinh.vo.ho_ten.trim() !== '') || hasSpouseInList;
-      
-      // 2. Kiểm tra có con
-      const hasChildInList = familyList.some(m => normalizeStr(m.quan_he).includes('con'));
-      const hasChildren = (p.quan_he_gia_dinh?.con?.length || 0) > 0 || hasChildInList;
-      
-      // 3. Kiểm tra người yêu
-      const hasLover = (p.quan_he_gia_dinh?.nguoi_yeu?.length || 0) > 0;
-      
-      // 4. Hoàn cảnh đặc biệt (Phân tích sâu dữ liệu)
-      const specialCircumstances = 
-        !!p.hoan_canh_song?.ly_do_khong_song_cung_bo_me || 
-        (p.hoan_canh_song?.song_chung_voi && 
-         p.hoan_canh_song.song_chung_voi !== '' && 
-         !p.hoan_canh_song.song_chung_voi.includes('Bố') && 
-         !p.hoan_canh_song.song_chung_voi.includes('Mẹ')) ||
-        !!p.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than?.co_khong ||
-        familyList.some(m => {
-          const info = normalizeStr(m.cho_o + m.nghe_nghiep);
-          return info.includes('ly hôn') || info.includes('đã mất') || info.includes('tử vong') || info.includes('trại giam');
-        });
+      const maritalStatus = pAny.custom_data?.tinh_trang_hon_nhan; // 'ket_hon' | 'doc_than'
+      const hasWife = !!(pAny.quan_he_gia_dinh?.vo?.ho_ten);
+      const isMarried = maritalStatus === 'ket_hon' || hasWife;
+
+      const hasChildren = (p.quan_he_gia_dinh?.con?.length || 0) > 0;
+      const hasLover = !!pAny.custom_data?.co_nguoi_yeu || (p.quan_he_gia_dinh?.nguoi_yeu?.length || 0) > 0;
+      const livingAlone = pAny.hoan_canh_song?.song_chung_voi?.includes('Một mình');
 
       switch (criteria.marital) {
         case 'da_vo': if (!isMarried) return false; break;
         case 'chua_vo': if (isMarried) return false; break;
         case 'co_con': if (!hasChildren) return false; break;
         case 'co_nguoi_yeu': if (!hasLover) return false; break;
-        case 'hoan_canh_dac_biet': if (!specialCircumstances) return false; break;
+        case 'song_mot_minh': if (!livingAlone) return false; break;
       }
     }
+    
+    // Kinh tế gia đình
+    if (criteria.economic && criteria.economic !== 'all') {
+        const eco = normalizeStr(p.thong_tin_gia_dinh_chung?.muc_song);
+        if (criteria.economic === 'ho_ngheo' && !eco.includes('nghèo')) return false;
+        if (criteria.economic === 'kha_gia' && !eco.includes('khá')) return false;
+        if (criteria.economic === 'kho_khan' && !eco.includes('khó')) return false;
+    }
 
-    // F. Nhân khẩu học
+    // F. NHÂN KHẨU HỌC
     if (criteria.ethnicity !== 'all') {
-      const isKinh = normalizeStr(p.dan_toc || '').includes('kinh');
+      const isKinh = normalizeStr(p.dan_toc).includes('kinh');
       if (criteria.ethnicity === 'kinh' && !isKinh) return false;
       if (criteria.ethnicity === 'dan_toc_thieu_so' && isKinh) return false;
     }
-    
+    if (criteria.religion !== 'all') {
+        const isNone = normalizeStr(p.ton_giao) === 'không' || normalizeStr(p.ton_giao) === '';
+        if (criteria.religion === 'khong' && !isNone) return false;
+        if (criteria.religion === 'co_ton_giao' && isNone) return false;
+    }
     if (criteria.ageRange !== 'all') {
       const age = getAge(p.ngay_sinh);
       if (criteria.ageRange === '18_25' && (age < 18 || age > 25)) return false;
@@ -157,66 +165,68 @@ export const filterPersonnel = (
       if (criteria.ageRange === '31_40' && (age < 31 || age > 40)) return false;
       if (criteria.ageRange === 'tren_40' && age <= 40) return false;
     }
-    
     if (criteria.hometown) {
       const ht = normalizeStr(criteria.hometown);
       const matchHT = normalizeStr(p.noi_sinh).includes(ht) || normalizeStr(p.ho_khau_thu_tru).includes(ht);
       if (!matchHT) return false;
     }
 
-    // G. BỘ LỌC AN NINH
+    // G. AN NINH (Deep Search vào mảng mới)
     if (criteria.security !== 'all') {
+      const hasDiscipline = Array.isArray(pAny.lich_su_vi_pham?.ky_luat_quan_doi) && pAny.lich_su_vi_pham.ky_luat_quan_doi.length > 0;
+      const hasLegal = Array.isArray(pAny.lich_su_vi_pham?.vi_pham_phap_luat) && pAny.lich_su_vi_pham.vi_pham_phap_luat.length > 0;
+
       switch (criteria.security) {
         case 'canh_bao': if (!hasSecurityAlert(p)) return false; break;
         case 'an_toan': if (hasSecurityAlert(p)) return false; break;
         case 'vay_no': if (!p.tai_chinh_suc_khoe?.vay_no?.co_khong) return false; break;
-        case 'vay_no_gia_dinh_khong_biet': 
-          if (!p.tai_chinh_suc_khoe?.vay_no?.co_khong || p.tai_chinh_suc_khoe.vay_no.gia_dinh_biet) return false; 
-          break;
-        case 'vi_pham_ky_luat': if (!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong) return false; break;
         case 'ma_tuy': if (!p.lich_su_vi_pham?.ma_tuy?.co_khong) return false; break;
         case 'danh_bac': if (!p.lich_su_vi_pham?.danh_bac?.co_khong) return false; break;
+        case 'vi_pham_ky_luat': if (!hasDiscipline) return false; break;
+        case 'vi_pham_phap_luat': if (!hasLegal) return false; break;
         case 'nuoc_ngoai': 
-          const foreign = (p.yeu_to_nuoc_ngoai?.than_nhan?.length || 0) > 0 || (p.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length || 0) > 0 || !!p.vi_pham_nuoc_ngoai;
+          const foreign = (p.yeu_to_nuoc_ngoai?.than_nhan?.length || 0) > 0 || 
+                          (p.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length || 0) > 0;
           if (!foreign) return false; 
           break;
-        case 'ho_chieu': if (!p.yeu_to_nuoc_ngoai?.ho_chieu?.da_co) return false; break;
-        case 'dang_lam_dinh_cu': if (!p.yeu_to_nuoc_ngoai?.xuat_canh_dinh_cu?.dang_lam_thu_tuc) return false; break;
       }
+    }
+
+    // H. SỨC KHỎE & KINH DOANH (Mới)
+    if (criteria.health && criteria.health !== 'all') {
+        const pl = pAny.tai_chinh_suc_khoe?.suc_khoe?.phan_loai || '';
+        const benhLy = pAny.tai_chinh_suc_khoe?.suc_khoe?.benh_ly || '';
+        
+        if (criteria.health === 'loai_1' && pl !== 'Loại 1') return false;
+        if (criteria.health === 'loai_2' && pl !== 'Loại 2') return false;
+        if (criteria.health === 'loai_3_4_5' && !['Loại 3', 'Loại 4', 'Loại 5'].includes(pl)) return false;
+        if (criteria.health === 'co_benh_nen' && !benhLy) return false;
+    }
+
+    if (criteria.business && criteria.business !== 'all') {
+        const isBiz = !!p.tai_chinh_suc_khoe?.kinh_doanh?.co_khong;
+        if (criteria.business === 'co_kinh_doanh' && !isBiz) return false;
+        if (criteria.business === 'khong_kinh_doanh' && isBiz) return false;
     }
 
     return true;
   });
 
-  // H. SẮP XẾP (Giữ nguyên logic sắp xếp Tiếng Việt thông minh)
+  // I. SẮP XẾP
   if (criteria.sortBy && criteria.sortBy !== 'none') {
     results.sort((a, b) => {
       switch (criteria.sortBy) {
         case 'name':
-          const getSortName = (fullName: string) => {
-            const parts = fullName.trim().split(' ');
-            const firstName = parts.pop() || '';
-            const middleAndLastName = parts.join(' ');
-            return { firstName, middleAndLastName };
-          };
-          const nameA = getSortName(a.ho_ten);
-          const nameB = getSortName(b.ho_ten);
-          const cmpName = nameA.firstName.localeCompare(nameB.firstName, 'vi');
-          if (cmpName !== 0) return cmpName;
-          return nameA.middleAndLastName.localeCompare(nameB.middleAndLastName, 'vi');
-        
+          const getFirstName = (fullName: string) => fullName.trim().split(' ').pop() || '';
+          return getFirstName(a.ho_ten).localeCompare(getFirstName(b.ho_ten), 'vi');
         case 'age':
-          return new Date(b.ngay_sinh).getTime() - new Date(a.ngay_sinh).getTime();
-        
+          return new Date(b.ngay_sinh).getTime() - new Date(a.ngay_sinh).getTime(); 
         case 'enlistment':
           return new Date(b.nhap_ngu_ngay).getTime() - new Date(a.nhap_ngu_ngay).getTime();
-        
         case 'rank':
           const rankOrder = ['Binh nhì', 'Binh nhất', 'Hạ sĩ', 'Trung sĩ', 'Thượng sĩ', 'Thiếu úy', 'Trung úy', 'Thượng úy', 'Đại úy', 'Thiếu tá', 'Trung tá', 'Thượng tá', 'Đại tá'];
           return rankOrder.indexOf(b.cap_bac) - rankOrder.indexOf(a.cap_bac);
-        
-        default:
-          return 0;
+        default: return 0;
       }
     });
   }

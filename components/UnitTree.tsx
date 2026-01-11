@@ -8,7 +8,7 @@ import {
   Users, Plus, Trash2, Layers, X,
   ShieldCheck, ListFilter,
   Info, Layout, GraduationCap, ShieldAlert,
-  ArrowUpRight, AlertCircle, Award, User
+  ArrowUpRight, AlertCircle, Award, User, Edit3, AlertTriangle
 } from 'lucide-react';
 
 interface UnitTreeProps {
@@ -22,9 +22,17 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh, onViewDetailedLis
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(['1']));
   const [allPersonnel, setAllPersonnel] = useState<MilitaryPersonnel[]>([]);
   
-  const [newUnitName, setNewUnitName] = useState('');
+  // States for Modals
   const [isAddMode, setIsAddMode] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  
   const [targetParentId, setTargetParentId] = useState<string | null>(null);
+  const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
+  const [unitToDelete, setUnitToDelete] = useState<Unit | null>(null);
+  
+  const [newUnitName, setNewUnitName] = useState('');
+  const [editUnitName, setEditUnitName] = useState('');
 
   useEffect(() => {
     const loadPersonnel = async () => {
@@ -84,6 +92,19 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh, onViewDetailedLis
     setNewUnitName(''); setIsAddMode(false); onRefresh();
   };
 
+  const handleEditUnit = async () => {
+    if (!editingUnit || !editUnitName.trim()) return;
+    await db.updateUnit(editingUnit.id, editUnitName);
+    setEditingUnit(null); setIsEditMode(false); onRefresh();
+  };
+
+  const handleDeleteUnit = async () => {
+    if (!unitToDelete) return;
+    await db.deleteUnit(unitToDelete.id);
+    if (activeUnitId === unitToDelete.id) setActiveUnitId(null);
+    setUnitToDelete(null); setIsDeleteConfirmOpen(false); onRefresh();
+  };
+
   const renderTree = (parentId: string | null, level: number = 0) => {
     const childUnits = units.filter(u => u.parentId === parentId);
     return childUnits.map(unit => {
@@ -91,20 +112,38 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh, onViewDetailedLis
       const hasChildren = units.some(u => u.parentId === unit.id);
       const isActive = activeUnitId === unit.id;
       return (
-        <div key={unit.id} className="relative">
+        <div key={unit.id} className="relative group/item">
           {level > 0 && (
              <div className="absolute left-[-10px] top-0 bottom-0 w-[1px] bg-slate-200" />
           )}
           <div 
             onClick={() => setActiveUnitId(unit.id)}
-            className={`flex items-center gap-2 py-1.5 px-2 rounded-lg cursor-pointer transition-all mb-1 ${isActive ? 'bg-[#14452F] text-white' : 'hover:bg-slate-50 text-slate-600'}`}
+            className={`flex items-center gap-2 py-1.5 px-2 rounded-lg cursor-pointer transition-all mb-1 group ${isActive ? 'bg-[#14452F] text-white' : 'hover:bg-slate-100 text-slate-600'}`}
             style={{ marginLeft: `${level * 16}px` }}
           >
             <div onClick={(e) => hasChildren && toggleExpand(unit.id, e)} className="p-1">
               {hasChildren ? (isExpanded ? <ChevronDown size={12}/> : <ChevronRight size={12}/>) : <div className="w-3"/>}
             </div>
             {isExpanded ? <FolderOpen size={14} className="text-amber-500"/> : <Folder size={14} className="text-amber-500"/>}
-            <span className="text-[12px] font-bold uppercase truncate">{unit.name}</span>
+            <span className="text-[12px] font-bold uppercase truncate flex-1">{unit.name}</span>
+            
+            {/* Action Buttons for Unit Tree Items */}
+            <div className="hidden group-hover:flex items-center gap-1">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setEditingUnit(unit); setEditUnitName(unit.name); setIsEditMode(true); }}
+                  className={`p-1 rounded hover:bg-white/20 ${isActive ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-blue-600'}`}
+                >
+                  <Edit3 size={12} />
+                </button>
+                {unit.id !== '1' && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setUnitToDelete(unit); setIsDeleteConfirmOpen(true); }}
+                    className={`p-1 rounded hover:bg-white/20 ${isActive ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-red-500'}`}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+            </div>
           </div>
           {isExpanded && renderTree(unit.id, level + 1)}
         </div>
@@ -145,8 +184,24 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh, onViewDetailedLis
                         <div>
                             <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight leading-none mb-1">{activeUnit.name}</h2>
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                                <Info size={10}/> Quản lý bởi Ban Chỉ Huy
+                                <Info size={10}/> Quản lý đơn vị trực thuộc
                             </p>
+                        </div>
+                        <div className="ml-auto flex gap-2">
+                             <button 
+                                onClick={() => { setEditingUnit(activeUnit); setEditUnitName(activeUnit.name); setIsEditMode(true); }}
+                                className="p-2 bg-slate-50 border border-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-all"
+                             >
+                                <Edit3 size={18} />
+                             </button>
+                             {activeUnit.id !== '1' && (
+                               <button 
+                                  onClick={() => { setUnitToDelete(activeUnit); setIsDeleteConfirmOpen(true); }}
+                                  className="p-2 bg-slate-50 border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 transition-all"
+                               >
+                                  <Trash2 size={18} />
+                               </button>
+                             )}
                         </div>
                     </div>
 
@@ -166,7 +221,6 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh, onViewDetailedLis
                     </div>
                 </div>
 
-                {/* Biểu đồ phân bổ cấp bậc */}
                 <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                     <h4 className="text-[11px] font-black text-slate-800 uppercase mb-4 flex items-center gap-2">
                         <Award size={16} className="text-[#14452F]"/> Phân bổ cấp bậc trong đơn vị
@@ -205,7 +259,6 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh, onViewDetailedLis
                 </div>
             </div>
 
-            {/* PANEL CẢNH BÁO & CHI TIẾT NHANH (Cột 3) */}
             <div className="col-span-4 flex flex-col gap-5 overflow-hidden">
                 <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
                     <div className="p-4 bg-amber-50/50 border-b border-amber-100 flex items-center justify-between">
@@ -280,7 +333,7 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh, onViewDetailedLis
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Tên đơn vị</label>
                     <input 
                         autoFocus
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-[#14452F] uppercase outline-none focus:ring-4 ring-green-500/5 transition-all"
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-[#14452F] uppercase outline-none focus:ring-4 ring-green-50/5 transition-all"
                         value={newUnitName}
                         onChange={(e) => setNewUnitName(e.target.value)}
                         placeholder="TIỂU ĐOÀN..."
@@ -290,6 +343,54 @@ const UnitTree: React.FC<UnitTreeProps> = ({ units, onRefresh, onViewDetailedLis
                     <button onClick={() => setIsAddMode(false)} className="flex-1 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold uppercase text-[10px]">Hủy</button>
                     <button onClick={handleAddUnit} className="flex-1 py-3 bg-[#14452F] text-white rounded-xl font-bold uppercase text-[10px] shadow-lg">Xác nhận</button>
                 </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL SỬA ĐƠN VỊ */}
+      {isEditMode && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-slate-200">
+            <div className="flex justify-between items-center mb-6">
+              <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">Sửa tên đơn vị</h4>
+              <button onClick={() => setIsEditMode(false)} className="p-1 text-slate-400 hover:text-red-500"><X size={20}/></button>
+            </div>
+            <div className="space-y-4">
+                <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Tên đơn vị hiện tại</label>
+                    <input 
+                        autoFocus
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-[#14452F] uppercase outline-none focus:ring-4 ring-green-50/5 transition-all"
+                        value={editUnitName}
+                        onChange={(e) => setEditUnitName(e.target.value)}
+                    />
+                </div>
+                <div className="flex gap-3">
+                    <button onClick={() => setIsEditMode(false)} className="flex-1 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold uppercase text-[10px]">Hủy</button>
+                    <button onClick={handleEditUnit} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold uppercase text-[10px] shadow-lg">Cập nhật</button>
+                </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN XÓA */}
+      {isDeleteConfirmOpen && unitToDelete && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-slate-200">
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-4">
+                 <AlertTriangle size={32} />
+              </div>
+              <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">Xác nhận xóa đơn vị?</h4>
+              <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase leading-relaxed">
+                 Hành động này sẽ xóa đơn vị <span className="text-red-600">"{unitToDelete.name}"</span> và TOÀN BỘ đơn vị trực thuộc bên trong.
+              </p>
+            </div>
+            <div className="flex gap-3">
+                <button onClick={() => setIsDeleteConfirmOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold uppercase text-[10px]">Hủy bỏ</button>
+                <button onClick={handleDeleteUnit} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold uppercase text-[10px] shadow-lg">Đồng ý xóa</button>
             </div>
           </div>
         </div>

@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // System Utils
   getStats: () => ipcRenderer.invoke('db:getStats'),
   saveSetting: (p) => ipcRenderer.invoke('db:saveSetting', p),
-  getSetting: (k) => ipcRenderer.invoke('db:getSetting', k)
+  getSetting: (k) => ipcRenderer.invoke('db:getSetting', k),
+  updateFromFile: () => ipcRenderer.invoke('system:updateFromFile')
 });

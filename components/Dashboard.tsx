@@ -8,7 +8,8 @@ import {
   LayoutDashboard,
   GraduationCap,
   FileText, MapPin, ChevronLeft, ChevronRight,
-  CalendarDays
+  CalendarDays,
+  Shield
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { MilitaryPersonnel, Unit, ShortcutConfig } from '../types';
@@ -16,6 +17,7 @@ import { db, FilterCriteria } from '../store';
 import PersonnelForm from './PersonnelForm';
 import UnitTree from './UnitTree';
 import Settings from './Settings';
+import UserGuide from './UserGuide';
 import { exportPersonnelToCSV } from '../utils/exportHelper';
 import ProfilePrintTemplate from './ProfilePrintTemplate';
 
@@ -154,12 +156,20 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       <ProfilePrintTemplate data={printingPerson} />
 
       <div className="w-64 bg-[#14452F] flex flex-col shadow-xl shrink-0 z-20 no-print">
-        <div className="p-5 text-center border-b border-white/10">
-          <div className="flex items-center justify-center gap-3 mb-1">
-             <ShieldCheck className="text-white w-6 h-6" />
-             <h1 className="text-white font-bold text-lg tracking-tight">QN-Manager</h1>
+        {/* LOGO NHẬN DIỆN MỚI */}
+        <div className="p-6 text-center border-b border-white/5 bg-[#0d2d1f]">
+          <div className="flex flex-col items-center gap-2 mb-1">
+             <div className="relative">
+                <div className="absolute inset-0 bg-green-400 blur-[15px] opacity-20"></div>
+                <Shield className="text-white w-8 h-8 relative z-10 drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]" strokeWidth={2} />
+             </div>
+             <h1 className="text-white font-black text-[13px] tracking-[0.1em] uppercase leading-tight mt-1">
+                QLQN MANAGER<br/>SYSTEM
+             </h1>
           </div>
-          <p className="text-[#D4AF37] text-[10px] font-medium uppercase tracking-widest opacity-80">System v7.0</p>
+          <p className="text-[#D4AF37] text-[8px] font-black uppercase tracking-[0.25em] opacity-90 mt-2">
+            Powered by DHsystem
+          </p>
         </div>
         
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-hide">
@@ -403,42 +413,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       </div>
 
       {showGuide && (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print">
-          <div className="bg-white rounded-xl w-full max-w-lg overflow-hidden shadow-2xl animate-fade-in">
-             <div className="bg-green-800 p-4 flex justify-between items-center">
-                <h2 className="text-white font-bold text-sm uppercase flex items-center gap-2"><BookOpen size={16}/> Hướng dẫn nhanh</h2>
-                <button onClick={() => setShowGuide(false)} className="text-white/70 hover:text-white"><X size={18}/></button>
-             </div>
-             
-             <div className="p-6 space-y-4 text-sm text-slate-600">
-               <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-green-50 text-green-700 rounded-full flex items-center justify-center shrink-0"><Eye size={14}/></div>
-                  <div>
-                    <p className="font-bold text-slate-800">Xem & Sửa</p>
-                    <p className="text-xs mt-1">Nhấn nút "Mắt" ở mỗi dòng để xem chi tiết. Trong bảng hiện ra, nhấn "Chỉnh sửa" để cập nhật.</p>
-                  </div>
-               </div>
-               <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-blue-50 text-blue-700 rounded-full flex items-center justify-center shrink-0"><Printer size={14}/></div>
-                  <div>
-                    <p className="font-bold text-slate-800">In ấn</p>
-                    <p className="text-xs mt-1">Nhấn nút "Máy in" để in trích ngang lý lịch A4.</p>
-                  </div>
-               </div>
-               <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-amber-50 text-amber-700 rounded-full flex items-center justify-center shrink-0"><FileDown size={14}/></div>
-                  <div>
-                    <p className="font-bold text-slate-800">Xuất báo cáo</p>
-                    <p className="text-xs mt-1">Nút "Xuất Excel" ở góc trên cùng bên phải.</p>
-                  </div>
-               </div>
-             </div>
-
-             <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
-               <button onClick={() => setShowGuide(false)} className="px-6 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Đóng</button>
-             </div>
-          </div>
-        </div>
+        <UserGuide onClose={() => setShowGuide(false)} />
       )}
 
       {isFormOpen && (

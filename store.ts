@@ -20,6 +20,7 @@ declare global {
   }
 }
 
+// Khởi tạo Database Dexie
 const dbInstance = new Dexie('QNManagerDB_v2') as Dexie & {
   personnel: Table<MilitaryPersonnel>;
   units: Table<Unit>;
@@ -81,18 +82,12 @@ class Store {
     return ids;
   }
 
-  // LOGIC CỐT LÕI: Kiểm tra cảnh báo an ninh
   public hasSecurityAlert(p: MilitaryPersonnel): boolean {
     return (
-      // 1. Vay nợ
       !!p.tai_chinh_suc_khoe?.vay_no?.co_khong ||
-      // 2. Vi phạm kỷ luật/pháp luật địa phương
       !!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong ||
-      // 3. Ma túy
       !!p.lich_su_vi_pham?.ma_tuy?.co_khong ||
-      // 4. Cờ bạc
       !!p.lich_su_vi_pham?.danh_bac?.co_khong ||
-      // 5. Yếu tố nước ngoài
       (p.yeu_to_nuoc_ngoai?.than_nhan?.length || 0) > 0 ||
       (p.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length || 0) > 0 ||
       !!p.yeu_to_nuoc_ngoai?.ho_chieu?.da_co ||
@@ -138,27 +133,36 @@ class Store {
       });
     }
 
-    return collection.reverse().sortBy('createdAt');
+    const resultArray = await collection.toArray();
+    return resultArray.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
 
   async getDashboardStats() {
-    const all = await dbInstance.personnel.toArray();
-    const stats = {
-      total: all.length,
-      party: all.filter(p => !!p.vao_dang_ngay).length,
-      securityAlert: all.filter(p => this.hasSecurityAlert(p)).length,
-      educationHigh: all.filter(p => {
-        const edu = (p.trinh_do_van_hoa || '').toLowerCase();
-        return edu.includes('đại học') || edu.includes('cao đẳng') || edu.includes('thạc sĩ');
-      }).length,
-      ranks: {} as Record<string, number>
-    };
+    const total = await dbInstance.personnel.count();
+    const party = await dbInstance.personnel.filter(p => !!p.vao_dang_ngay).count();
+    
+    let securityAlert = 0;
+    let educationHigh = 0;
+    const ranks: Record<string, number> = {};
 
-    all.forEach(p => {
-      stats.ranks[p.cap_bac] = (stats.ranks[p.cap_bac] || 0) + 1;
+    await dbInstance.personnel.each(p => {
+        if (this.hasSecurityAlert(p)) securityAlert++;
+        
+        const edu = (p.trinh_do_van_hoa || '').toLowerCase();
+        if (edu.includes('đại học') || edu.includes('cao đẳng') || edu.includes('thạc sĩ')) {
+            educationHigh++;
+        }
+        
+        ranks[p.cap_bac] = (ranks[p.cap_bac] || 0) + 1;
     });
 
-    return stats;
+    return {
+      total,
+      party,
+      securityAlert,
+      educationHigh,
+      ranks
+    };
   }
 
   async addPersonnel(p: MilitaryPersonnel) {
@@ -185,7 +189,13 @@ class Store {
     return dbInstance.units.add({ id: Date.now().toString(), name, parentId });
   }
 
+  async updateUnit(id: string, name: string) {
+    this.log('INFO', `Cập nhật tên đơn vị ID ${id} thành: ${name}`);
+    return dbInstance.units.update(id, { name });
+  }
+
   async deleteUnit(id: string) {
+    this.log('WARN', `Bắt đầu xóa đơn vị ID: ${id}`);
     const allChildIds = await this.getAllChildUnitIds(id);
     await dbInstance.units.bulkDelete(allChildIds);
     return true;
@@ -205,7 +215,6 @@ class Store {
     return saved || DEFAULT_SHORTCUTS;
   }
 
-  // FIX: Added updateShortcut method
   async updateShortcut(id: string, update: Partial<ShortcutConfig>) {
     const shortcuts = await this.getShortcuts();
     const index = shortcuts.findIndex(s => s.id === id);
@@ -215,7 +224,6 @@ class Store {
     }
   }
 
-  // FIX: Added resetShortcuts method
   async resetShortcuts() {
     await this.saveSetting('app_shortcuts', DEFAULT_SHORTCUTS);
   }
@@ -242,9 +250,53 @@ class Store {
     return dbInstance.logs.reverse().limit(50).toArray();
   }
 
-  // FIX: Added clearLogs method
   async clearLogs() {
     await dbInstance.logs.clear();
+  }
+
+  async createBackup(): Promise<string> {
+    try {
+      const personnel = await dbInstance.personnel.toArray();
+      const units = await dbInstance.units.toArray();
+      const settings = await dbInstance.settings.toArray();
+      
+      const backupData = {
+        version: "2.6",
+        timestamp: Date.now(),
+        data: {
+          personnel,
+          units,
+          settings
+        }
+      };
+      
+      return JSON.stringify(backupData, null, 2);
+    } catch (error) {
+      console.error("Lỗi khi tạo backup:", error);
+      return "";
+    }
+  }
+
+  async restoreBackup(jsonData: any): Promise<boolean> {
+    try {
+        if (!jsonData.data || !Array.isArray(jsonData.data.personnel)) {
+            return false;
+        }
+
+        await dbInstance.personnel.clear();
+        await dbInstance.units.clear();
+        await dbInstance.settings.clear();
+
+        if (jsonData.data.personnel.length) await dbInstance.personnel.bulkAdd(jsonData.data.personnel);
+        if (jsonData.data.units.length) await dbInstance.units.bulkAdd(jsonData.data.units);
+        if (jsonData.data.settings.length) await dbInstance.settings.bulkAdd(jsonData.data.settings);
+        
+        this.log('SYSTEM', `Khôi phục dữ liệu từ bản sao lưu ngày ${new Date(jsonData.timestamp).toLocaleDateString()}`);
+        return true;
+    } catch (e) {
+        console.error(e);
+        return false;
+    }
   }
 
   getCustomFields(unitId: string): CustomField[] { return []; }

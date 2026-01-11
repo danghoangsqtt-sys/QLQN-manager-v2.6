@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session } = require('electron');
+const { app, BrowserWindow, ipcMain, session, dialog, shell } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -93,7 +93,10 @@ function createWindow() {
   // Cấu hình CSP (Đã sửa để chạy được Dev mode)
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const devCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: http: https:;";
-    const prodCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file: https://fonts.googleapis.com https://fonts.gstatic.com;";
+    
+    // Sửa prodCSP: Bỏ fonts.googleapis.com, fonts.gstatic.com
+    // Thêm media-src nếu có video/ảnh
+    const prodCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file:;"; 
 
     callback({
       responseHeaders: {
@@ -101,7 +104,7 @@ function createWindow() {
         'Content-Security-Policy': [ isDev ? devCSP : prodCSP ]
       }
     });
-  });
+});
 
   if (isDev) {
     console.log('Running in Development Mode');
@@ -131,4 +134,38 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+
+ipcMain.handle('system:updateFromFile', async () => {
+  const win = BrowserWindow.getFocusedWindow();
+  
+  // 1. Mở hộp thoại để người dùng chọn file cài đặt mới (.exe)
+  const result = await dialog.showOpenDialog(win, {
+    title: 'Chọn file cài đặt phiên bản mới',
+    properties: ['openFile'],
+    filters: [
+      { name: 'File cài đặt', extensions: ['exe'] } // Chỉ cho chọn file .exe
+    ]
+  });
+
+  // Nếu người dùng hủy chọn hoặc không chọn file
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, message: 'Đã hủy chọn file.' };
+  }
+
+  const installerPath = result.filePaths[0];
+
+  try {
+    // 2. Mở file cài đặt lên
+    await shell.openPath(installerPath);
+    
+    // 3. Tắt ứng dụng hiện tại sau 1 giây để bộ cài đặt mới có thể ghi đè file
+    setTimeout(() => {
+      app.quit();
+    }, 1000);
+
+    return { success: true, message: 'Đang khởi chạy bộ cài đặt...' };
+  } catch (error) {
+    return { success: false, message: 'Lỗi khi mở file: ' + error.message };
+  }
 });

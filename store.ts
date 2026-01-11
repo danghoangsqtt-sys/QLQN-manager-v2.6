@@ -99,8 +99,8 @@ class Store {
     return await dbInstance.personnel.get(id);
   }
 
-  // [ĐÃ SỬA LỖI] Tối ưu hóa hiệu năng, thêm limit
-  async getPersonnel(filters: Partial<FilterCriteria> = {}): Promise<MilitaryPersonnel[]> {
+  // [ĐÃ SỬA LỖI] Tối ưu hóa hiệu năng, thêm cờ unlimited để tải toàn bộ danh sách khi cần
+  async getPersonnel(filters: Partial<FilterCriteria> = {}, unlimited: boolean = false): Promise<MilitaryPersonnel[]> {
     let collection = dbInstance.personnel.toCollection();
 
     if (filters.keyword) {
@@ -138,15 +138,15 @@ class Store {
       });
     }
 
-    // [THÊM] Bảo vệ hiệu năng: Nếu không lọc gì cả, giới hạn 200 bản ghi đầu tiên
-    // Giúp tránh treo máy nếu dữ liệu quá lớn
-    if (!filters.keyword && (!filters.unitId || filters.unitId === 'all') && !filters.rank && !filters.security) {
+    // [LOGIC SỬA ĐỔI] Chỉ giới hạn 200 bản ghi khi KHÔNG có cờ unlimited
+    // Nếu unlimited = true, hệ thống sẽ trả về toàn bộ danh sách (cho thống kê, báo cáo)
+    if (!unlimited && !filters.keyword && (!filters.unitId || filters.unitId === 'all') && !filters.rank && !filters.security) {
         collection = collection.limit(200);
     }
 
     const resultArray = await collection.toArray();
     
-    // Chỉ trả về ảnh Thumb cho danh sách để nhẹ RAM
+    // Chỉ trả về ảnh Thumb cho danh sách để nhẹ RAM (quan trọng khi load 1000 người)
     const optimizedResult = resultArray.map(p => ({
         ...p,
         anh_dai_dien: p.anh_thumb || '', // Dùng ảnh nhỏ để hiển thị list

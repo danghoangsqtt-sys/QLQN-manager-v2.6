@@ -28,10 +28,13 @@ function hashPassword(password) {
 }
 
 // --- IPC HANDLERS ---
+// Sửa handler login để an toàn hơn
 ipcMain.handle('auth:login', (_, p) => {
   const settings = readSecureSettings();
-  const stored = settings['admin_password'] || '123456';
-  return stored.length === 64 ? hashPassword(p) === stored : p === stored;
+  const stored = settings['admin_password'];
+  // Nếu chưa có pass, mặc định là 123456 (hash sẵn hoặc check text thuần nếu lần đầu)
+  if (!stored) return p === '123456'; 
+  return hashPassword(p) === stored;
 });
 
 ipcMain.handle('auth:changePassword', (_, p) => {
@@ -43,8 +46,22 @@ ipcMain.handle('auth:changePassword', (_, p) => {
 
 // Thêm handler giả lập để tránh lỗi nếu preload gọi (dù store dùng dexie)
 ipcMain.handle('db:getStats', async () => ({ status: 'OK' }));
-ipcMain.handle('db:saveSetting', async () => true);
-ipcMain.handle('db:getSetting', async () => null);
+// Thêm Handler lưu setting thực sự
+ipcMain.handle('db:saveSetting', (_, {key, value}) => {
+    try {
+        const settings = readSecureSettings();
+        settings[key] = value;
+        writeSecureSettings(settings);
+        return true;
+    } catch (e) {
+        console.error(e);
+        return false;
+    }
+});
+ipcMain.handle('db:getSetting', (_, key) => {
+    const settings = readSecureSettings();
+    return settings[key];
+});
 
 // --- WINDOW MANAGEMENT ---
 function createWindow() {

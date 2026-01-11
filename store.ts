@@ -8,7 +8,7 @@ export interface FilterCriteria {
   rank: string;
   position: string;
   political: 'all' | 'dang_vien' | 'quan_chung';
-  security: 'all' | 'vay_no' | 'vi_pham';
+  security: 'all' | 'vay_no' | 'vi_pham' | 'nuoc_ngoai' | 'canh_bao';
   education: 'all' | 'dai_hoc_cao_dang' | 'duoi_dai_hoc';
   marital: 'all' | 'da_vo' | 'chua_vo';
   hasChildren: 'all' | 'co_con' | 'chua_con';
@@ -64,8 +64,11 @@ class Store {
     return res;
   }
 
-  async changePassword(newPassword: string): Promise<boolean> {
-    return window.electronAPI ? window.electronAPI.changePassword(newPassword) : true;
+  async changePassword(password: string): Promise<boolean> {
+    if (window.electronAPI && window.electronAPI.changePassword) {
+      return await window.electronAPI.changePassword(password);
+    }
+    return true;
   }
 
   private async getAllChildUnitIds(unitId: string): Promise<string[]> {
@@ -76,6 +79,25 @@ class Store {
       ids = [...ids, ...subIds];
     }
     return ids;
+  }
+
+  // LOGIC CỐT LÕI: Kiểm tra cảnh báo an ninh
+  public hasSecurityAlert(p: MilitaryPersonnel): boolean {
+    return (
+      // 1. Vay nợ
+      !!p.tai_chinh_suc_khoe?.vay_no?.co_khong ||
+      // 2. Vi phạm kỷ luật/pháp luật địa phương
+      !!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong ||
+      // 3. Ma túy
+      !!p.lich_su_vi_pham?.ma_tuy?.co_khong ||
+      // 4. Cờ bạc
+      !!p.lich_su_vi_pham?.danh_bac?.co_khong ||
+      // 5. Yếu tố nước ngoài
+      (p.yeu_to_nuoc_ngoai?.than_nhan?.length || 0) > 0 ||
+      (p.yeu_to_nuoc_ngoai?.di_nuoc_ngoai?.length || 0) > 0 ||
+      !!p.yeu_to_nuoc_ngoai?.ho_chieu?.da_co ||
+      !!p.vi_pham_nuoc_ngoai
+    );
   }
 
   async getPersonnel(filters: Partial<FilterCriteria> = {}): Promise<MilitaryPersonnel[]> {
@@ -105,14 +127,8 @@ class Store {
       collection = collection.filter(p => !p.vao_dang_ngay);
     }
 
-    if (filters.security === 'vay_no') {
-      collection = collection.filter(p => !!p.tai_chinh_suc_khoe?.vay_no?.co_khong);
-    } else if (filters.security === 'vi_pham') {
-      collection = collection.filter(p => 
-        !!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong || 
-        !!p.lich_su_vi_pham?.danh_bac?.co_khong || 
-        !!p.lich_su_vi_pham?.ma_tuy?.co_khong
-      );
+    if (filters.security === 'canh_bao') {
+        collection = collection.filter(p => this.hasSecurityAlert(p));
     }
 
     if (filters.education === 'dai_hoc_cao_dang') {
@@ -120,12 +136,6 @@ class Store {
         const edu = (p.trinh_do_van_hoa || '').toLowerCase();
         return edu.includes('đại học') || edu.includes('cao đẳng') || edu.includes('thạc sĩ');
       });
-    }
-
-    if (filters.marital === 'da_vo') {
-      collection = collection.filter(p => !!p.quan_he_gia_dinh?.vo);
-    } else if (filters.marital === 'chua_vo') {
-      collection = collection.filter(p => !p.quan_he_gia_dinh?.vo);
     }
 
     return collection.reverse().sortBy('createdAt');
@@ -136,13 +146,7 @@ class Store {
     const stats = {
       total: all.length,
       party: all.filter(p => !!p.vao_dang_ngay).length,
-      leave: all.filter(p => (p.nghi_phep_thuc_te || 0) > 0).length,
-      debt: all.filter(p => !!p.tai_chinh_suc_khoe?.vay_no?.co_khong).length,
-      violation: all.filter(p => 
-        !!p.lich_su_vi_pham?.vi_pham_dia_phuong?.co_khong || 
-        !!p.lich_su_vi_pham?.danh_bac?.co_khong || 
-        !!p.lich_su_vi_pham?.ma_tuy?.co_khong
-      ).length,
+      securityAlert: all.filter(p => this.hasSecurityAlert(p)).length,
       educationHigh: all.filter(p => {
         const edu = (p.trinh_do_van_hoa || '').toLowerCase();
         return edu.includes('đại học') || edu.includes('cao đẳng') || edu.includes('thạc sĩ');
@@ -182,7 +186,8 @@ class Store {
   }
 
   async deleteUnit(id: string) {
-    await dbInstance.units.delete(id);
+    const allChildIds = await this.getAllChildUnitIds(id);
+    await dbInstance.units.bulkDelete(allChildIds);
     return true;
   }
 
@@ -200,25 +205,25 @@ class Store {
     return saved || DEFAULT_SHORTCUTS;
   }
 
-  async updateShortcut(id: string, config: Partial<ShortcutConfig>): Promise<void> {
-    const current = await this.getShortcuts();
-    const updated = current.map(s => s.id === id ? { ...s, ...config } : s);
-    await this.saveSetting('app_shortcuts', updated);
+  // FIX: Added updateShortcut method
+  async updateShortcut(id: string, update: Partial<ShortcutConfig>) {
+    const shortcuts = await this.getShortcuts();
+    const index = shortcuts.findIndex(s => s.id === id);
+    if (index !== -1) {
+      shortcuts[index] = { ...shortcuts[index], ...update };
+      await this.saveSetting('app_shortcuts', shortcuts);
+    }
   }
 
-  async resetShortcuts(): Promise<void> {
+  // FIX: Added resetShortcuts method
+  async resetShortcuts() {
     await this.saveSetting('app_shortcuts', DEFAULT_SHORTCUTS);
   }
 
   async getSystemStats(): Promise<any> {
     const pCount = await dbInstance.personnel.count();
     const uCount = await dbInstance.units.count();
-    return {
-      personnelCount: pCount,
-      unitCount: uCount,
-      status: 'Hệ thống trực tuyến',
-      storageUsage: `${(pCount * 0.5 / 1024).toFixed(2)} MB`
-    };
+    return { personnelCount: pCount, unitCount: uCount, status: 'Hệ thống trực tuyến' };
   }
 
   async clearDatabase() {
@@ -228,17 +233,8 @@ class Store {
     await this.initDefaults();
   }
 
-  async clearLogs(): Promise<void> {
-    await dbInstance.logs.clear();
-  }
-
   async log(level: LogLevel, message: string) {
-    const entry: LogEntry = {
-      id: Date.now().toString(),
-      timestamp: Date.now(),
-      level,
-      message
-    };
+    const entry: LogEntry = { id: Date.now().toString(), timestamp: Date.now(), level, message };
     await dbInstance.logs.add(entry);
   }
 
@@ -246,9 +242,12 @@ class Store {
     return dbInstance.logs.reverse().limit(50).toArray();
   }
 
-  getCustomFields(unitId: string): CustomField[] {
-    return []; 
+  // FIX: Added clearLogs method
+  async clearLogs() {
+    await dbInstance.logs.clear();
   }
+
+  getCustomFields(unitId: string): CustomField[] { return []; }
 }
 
 export const db = new Store();

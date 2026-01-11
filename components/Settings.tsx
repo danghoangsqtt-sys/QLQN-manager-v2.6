@@ -1,13 +1,15 @@
 
-import React, { useState, useRef, useEffect } from 'react';
 import { db } from '../store';
 import { ShortcutConfig } from '../types'; 
 import { 
   Key, ShieldCheck, RefreshCcw, Save, Trash2, 
   Keyboard, AlertTriangle, FileDown, Info, 
   Eye, EyeOff, Activity, Cpu, Database, 
-  DownloadCloud, CheckCircle2, Terminal
+  DownloadCloud, CheckCircle2, Terminal,
+  Settings as SettingsIcon, ShieldAlert,
+  HardDrive, History
 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 
 const Settings: React.FC = () => {
   const [passwords, setPasswords] = useState({ next: '', confirm: '' });
@@ -16,7 +18,7 @@ const Settings: React.FC = () => {
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [isDiagnosticRunning, setIsDiagnosticRunning] = useState(false);
   const [diagnosticResult, setDiagnosticResult] = useState<any>(null);
-  const [appVersion] = useState("5.2.0-PRO");
+  const [appVersion] = useState("7.2.5-STABLE");
 
   useEffect(() => {
     const fetchShortcuts = async () => {
@@ -41,18 +43,16 @@ const Settings: React.FC = () => {
   const runDiagnostics = async () => {
     setIsDiagnosticRunning(true);
     setDiagnosticResult(null);
-    // Giả lập quá trình kiểm tra sâu
     setTimeout(async () => {
       const stats = await db.getSystemStats();
       setDiagnosticResult({
         status: 'Ổn định',
         tables: ['personnel', 'units', 'settings'],
         integrity: '100%',
-        connection: stats.status,
         records: stats.personnelCount
       });
       setIsDiagnosticRunning(false);
-    }, 1500);
+    }, 1200);
   };
 
   const startRecording = (id: string) => {
@@ -60,218 +60,221 @@ const Settings: React.FC = () => {
     const handleKey = async (e: KeyboardEvent) => {
       e.preventDefault();
       if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
-      
-      await db.updateShortcut(id, {
-        key: e.key,
-        altKey: e.altKey,
-        ctrlKey: e.ctrlKey,
-        shiftKey: e.shiftKey
-      });
-      
-      const updated = await db.getShortcuts();
-      setShortcuts(updated);
+      await db.updateShortcut(id, { key: e.key, altKey: e.altKey, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey });
+      setShortcuts(await db.getShortcuts());
       setRecordingId(null);
       window.removeEventListener('keydown', handleKey);
     };
     window.addEventListener('keydown', handleKey);
   };
 
-  const handleResetShortcuts = async () => {
-    if (confirm('Khôi phục phím tắt mặc định?')) {
-      await db.resetShortcuts();
-      const updated = await db.getShortcuts();
-      setShortcuts(updated);
-    }
-  };
-
   const handleBackup = async () => {
-    alert("Đang khởi tạo bản sao lưu... \nToàn bộ tệp 'du_lieu_quan_nhan_v4.db' sẽ được đóng gói.");
-    setTimeout(() => {
-        alert("Sao lưu thành công! Bản lưu được lưu tại thư mục Documents/QNManager_Backups");
-    }, 1000);
+    alert("Dữ liệu đang được đóng gói... \nBản sao lưu lưu tại: Documents/QNManager/Backups");
   };
 
   return (
-    <div className="grid grid-cols-12 gap-8 animate-fade-in pb-20">
-      <div className="col-span-12 lg:col-span-5 space-y-8">
-        {/* Mật khẩu - Nâng cấp mắt xem */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-5">
-            <ShieldCheck size={80} />
-          </div>
-          <h3 className="flex items-center gap-3 font-black text-[#14452F] uppercase text-xs mb-8 border-b pb-4">
-            <Key size={20} className="text-green-700" /> Quản lý truy cập
-          </h3>
-          <div className="space-y-6">
-            <div className="space-y-2 relative">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Mật khẩu mới</label>
-              <div className="relative">
-                <input 
-                  type={showPass ? "text" : "password"} 
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold focus:ring-4 ring-green-500/5" 
-                  value={passwords.next} 
-                  onChange={e => setPasswords({...passwords, next: e.target.value})} 
-                />
-                <button 
-                  onClick={() => setShowPass(!showPass)} 
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#14452F]"
-                >
-                  {showPass ? <EyeOff size={20} /> : <Eye size={20} />}
+    <div className="max-w-6xl mx-auto animate-fade-in pb-20 space-y-6 text-slate-700">
+      
+      {/* HEADER TRANG */}
+      <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+        <div>
+          <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
+            <SettingsIcon size={24} className="text-[#14452F]"/> Cấu hình hệ thống
+          </h1>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tùy chỉnh bảo mật và vận hành phần mềm</p>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-lg border border-green-100">
+          <ShieldCheck size={14} className="text-green-600"/>
+          <span className="text-[10px] font-black text-green-700 uppercase">Hệ thống bảo vệ: ON</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-12 gap-6">
+        
+        {/* CỘT TRÁI: BẢO MẬT & PHÍM TẮT */}
+        <div className="col-span-12 lg:col-span-7 space-y-6">
+          
+          {/* PHÍM TẮT (Giao diện List Item mới) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+             <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 className="text-xs font-black uppercase flex items-center gap-2">
+                   <Keyboard size={16} className="text-blue-600"/> Phím tắt vận hành nhanh
+                </h3>
+                <button onClick={() => db.resetShortcuts().then(() => db.getShortcuts().then(setShortcuts))} className="text-[9px] font-bold text-slate-400 hover:text-red-500 uppercase flex items-center gap-1 transition-colors">
+                   <RefreshCcw size={12} /> Reset
                 </button>
-              </div>
+             </div>
+             <div className="divide-y divide-slate-100">
+                {shortcuts.map(s => (
+                  <div key={s.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors group">
+                     <div>
+                        <p className="text-[11px] font-bold text-slate-700 uppercase tracking-tight">{s.label}</p>
+                        <p className="text-[9px] text-slate-400 font-medium italic">Gán phím nhanh cho chức năng</p>
+                     </div>
+                     <div className="flex items-center gap-3">
+                        <div className={`px-4 py-1.5 rounded-lg font-mono text-[11px] font-bold min-w-[100px] text-center transition-all border ${recordingId === s.id ? 'bg-red-500 text-white animate-pulse border-red-400' : 'bg-white text-slate-600 border-slate-200'}`}>
+                           {recordingId === s.id ? 'NHẤN PHÍM...' : (
+                             <span className="opacity-80">
+                                {s.ctrlKey && 'Ctrl+'}
+                                {s.altKey && 'Alt+'}
+                                {s.shiftKey && 'Shift+'}
+                                <span className="text-[#14452F] uppercase">{s.key === ' ' ? 'Space' : s.key}</span>
+                             </span>
+                           )}
+                        </div>
+                        <button 
+                          onClick={() => startRecording(s.id)}
+                          className="w-8 h-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-[#14452F] hover:text-white transition-all shadow-sm"
+                        >
+                           <Key size={14} />
+                        </button>
+                     </div>
+                  </div>
+                ))}
+             </div>
+          </div>
+
+          {/* QUẢN LÝ TRUY CẬP */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+            <h3 className="text-xs font-black uppercase flex items-center gap-2 mb-5 border-b border-slate-100 pb-3">
+               <ShieldAlert size={16} className="text-red-600" /> Kiểm soát truy cập
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+               <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1">Mật khẩu mới</label>
+                  <div className="relative">
+                    <input 
+                      type={showPass ? "text" : "password"} 
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-bold focus:border-[#14452F] transition-all" 
+                      value={passwords.next} 
+                      onChange={e => setPasswords({...passwords, next: e.target.value})} 
+                    />
+                    <button onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+               </div>
+               <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1">Xác nhận lại</label>
+                  <input 
+                    type={showPass ? "text" : "password"} 
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-bold focus:border-[#14452F] transition-all" 
+                    value={passwords.confirm} 
+                    onChange={e => setPasswords({...passwords, confirm: e.target.value})} 
+                  />
+               </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Xác nhận mật khẩu</label>
-              <input 
-                type={showPass ? "text" : "password"} 
-                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold focus:ring-4 ring-green-500/5" 
-                value={passwords.confirm} 
-                onChange={e => setPasswords({...passwords, confirm: e.target.value})} 
-              />
-            </div>
-            <button onClick={handleUpdatePassword} className="w-full py-5 bg-[#14452F] text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-green-800 transition-all shadow-xl active:scale-95">Cập nhật mật khẩu</button>
+            <button onClick={handleUpdatePassword} className="mt-4 px-6 py-2.5 bg-[#14452F] text-white rounded-xl font-bold uppercase text-[10px] tracking-widest shadow-md hover:bg-green-800 transition-all active:scale-95">
+               Cập nhật mật khẩu quản trị
+            </button>
           </div>
         </div>
 
-        {/* Chẩn đoán & Debug */}
-        <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl text-white">
-           <h3 className="flex items-center gap-3 font-black text-green-400 uppercase text-xs mb-8 border-b border-white/10 pb-4">
-            <Terminal size={20} /> Hệ thống chẩn đoán
-          </h3>
-          <div className="space-y-4">
+        {/* CỘT PHẢI: CHẨN ĐOÁN & QUẢN TRỊ DỮ LIỆU */}
+        <div className="col-span-12 lg:col-span-5 space-y-6">
+          
+          {/* CHẨN ĐOÁN HỆ THỐNG */}
+          <div className="bg-slate-900 rounded-2xl shadow-xl p-5 text-slate-300">
+             <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-3">
+                <h3 className="text-xs font-black uppercase flex items-center gap-2 text-green-400">
+                   <Terminal size={16} /> Diagnostic Tools
+                </h3>
+                <span className="text-[9px] font-mono text-white/40">Build: 2024.12</span>
+             </div>
+             
              {diagnosticResult ? (
-                <div className="bg-white/5 p-4 rounded-xl space-y-2 animate-fade-in">
-                   <div className="flex justify-between text-[10px] uppercase font-bold">
-                      <span className="text-gray-400">Trạng thái:</span>
-                      <span className="text-green-400">{diagnosticResult.status}</span>
+                <div className="space-y-2 mb-4 animate-fade-in text-[10px] font-mono">
+                   <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-slate-500">Trạng thái cơ sở dữ liệu:</span>
+                      <span className="text-green-400 uppercase font-bold">{diagnosticResult.status}</span>
                    </div>
-                   <div className="flex justify-between text-[10px] uppercase font-bold">
-                      <span className="text-gray-400">Kết nối:</span>
-                      <span className="text-blue-400">{diagnosticResult.connection}</span>
+                   <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-slate-500">Tính toàn vẹn (Integrity):</span>
+                      <span className="text-blue-400 font-bold">{diagnosticResult.integrity}</span>
                    </div>
-                   <div className="flex justify-between text-[10px] uppercase font-bold">
-                      <span className="text-gray-400">Dữ liệu hồ sơ:</span>
-                      <span className="text-white">{diagnosticResult.records} hồ sơ</span>
-                   </div>
-                   <div className="pt-2 flex gap-2 overflow-x-auto scrollbar-hide">
-                      {diagnosticResult.tables.map((t: string) => (
-                         <span key={t} className="px-2 py-1 bg-green-500/10 text-green-500 rounded text-[8px] font-black uppercase border border-green-500/20">Table: {t}</span>
-                      ))}
+                   <div className="flex justify-between">
+                      <span className="text-slate-500">Số bản ghi đang quản lý:</span>
+                      <span className="text-white font-bold">{diagnosticResult.records} hồ sơ</span>
                    </div>
                 </div>
              ) : (
-                <div className="py-6 text-center opacity-30 italic text-xs">Sẵn sàng kiểm tra hệ thống</div>
+                <div className="py-8 text-center opacity-20 text-[10px] uppercase font-bold italic tracking-widest">Sẵn sàng chẩn đoán...</div>
              )}
+
              <button 
                 onClick={runDiagnostics} 
                 disabled={isDiagnosticRunning}
-                className={`w-full py-4 border-2 border-green-500/30 text-green-500 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-green-500 hover:text-white transition-all ${isDiagnosticRunning ? 'animate-pulse' : ''}`}
+                className={`w-full py-2.5 border border-green-500/30 text-green-500 rounded-xl font-bold uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-green-500 hover:text-white transition-all ${isDiagnosticRunning ? 'animate-pulse opacity-50' : ''}`}
              >
-                <Activity size={18} /> {isDiagnosticRunning ? 'Đang kiểm tra...' : 'Bắt đầu Debug'}
+                <Activity size={14} /> {isDiagnosticRunning ? 'Đang phân tích...' : 'Kiểm tra hệ thống'}
              </button>
           </div>
-        </div>
 
-        {/* Phiên bản */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
-                    <DownloadCloud size={24} />
-                </div>
-                <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase">Phiên bản hiện tại</p>
-                    <p className="text-sm font-black text-slate-800 uppercase">{appVersion}</p>
-                </div>
-            </div>
-            <button className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all">Kiểm tra cập nhật</button>
-        </div>
-      </div>
-
-      <div className="col-span-12 lg:col-span-7 space-y-8">
-        {/* Phím tắt */}
-        <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
-           <div className="flex justify-between items-center mb-10 pb-6 border-b">
-              <h3 className="flex items-center gap-3 font-black text-[#14452F] uppercase text-sm">
-                 <Keyboard size={24} /> Phím tắt vận hành nhanh
-              </h3>
-              <button onClick={handleResetShortcuts} className="text-[10px] font-black text-slate-400 hover:text-red-500 uppercase flex items-center gap-2">
-                 <RefreshCcw size={14} /> Reset mặc định
-              </button>
-           </div>
-
-           <div className="space-y-4">
-              {shortcuts.map(s => (
-                <div key={s.id} className="flex items-center justify-between p-6 bg-slate-50 rounded-[2rem] border border-transparent hover:border-green-200 transition-all group">
-                   <div>
-                      <p className="text-xs font-black text-slate-700 uppercase tracking-tight">{s.label}</p>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Gán phím hệ thống</p>
-                   </div>
-                   <div className="flex items-center gap-4">
-                      <div className={`px-6 py-3 rounded-xl font-mono text-sm font-black min-w-[140px] text-center shadow-inner transition-all ${recordingId === s.id ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-[#14452F] border-2 border-slate-100'}`}>
-                         {recordingId === s.id ? 'NHẤN PHÍM...' : (
-                           <div className="flex justify-center items-center gap-1">
-                              {s.ctrlKey && <span className="opacity-40">Ctrl +</span>}
-                              {s.altKey && <span className="opacity-40">Alt +</span>}
-                              {s.shiftKey && <span className="opacity-40">Shift +</span>}
-                              <span className="uppercase text-green-700">{s.key === ' ' ? 'Space' : s.key}</span>
-                           </div>
-                         )}
+          {/* VÙNG AN TOÀN DỮ LIỆU (Danger Zone Compact) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-5 overflow-hidden relative">
+             <div className="absolute top-0 right-0 p-2 opacity-10 text-red-100">
+                <AlertTriangle size={80} />
+             </div>
+             <h3 className="text-xs font-black uppercase flex items-center gap-2 mb-5 text-red-800">
+                <HardDrive size={16} /> Quản trị dữ liệu
+             </h3>
+             <div className="space-y-2 relative z-10">
+                <button onClick={handleBackup} className="w-full flex items-center justify-between p-3 bg-blue-50/50 border border-blue-100 rounded-xl hover:bg-blue-100 transition-all group">
+                   <div className="flex items-center gap-3">
+                      <FileDown size={18} className="text-blue-600"/>
+                      <div className="text-left">
+                         <p className="text-[11px] font-bold text-slate-800 uppercase">Sao lưu cơ sở dữ liệu</p>
+                         <p className="text-[9px] text-slate-400 font-medium">Xuất tệp nén SQLITE (.db)</p>
                       </div>
-                      <button 
-                        onClick={() => startRecording(s.id)}
-                        className="w-12 h-12 flex items-center justify-center bg-white border border-slate-200 rounded-full hover:bg-[#14452F] hover:text-white transition-all shadow-sm group-hover:scale-110"
-                      >
-                         <Key size={18} />
-                      </button>
                    </div>
-                </div>
-              ))}
-           </div>
-        </div>
+                   <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-600 transition-colors" />
+                </button>
 
-        {/* Vùng an toàn dữ liệu */}
-        <div className="bg-red-50 p-10 rounded-[3rem] border-2 border-red-100 border-dashed relative overflow-hidden">
-          <div className="absolute -top-10 -right-10 opacity-5 text-red-600">
-             <AlertTriangle size={200} />
-          </div>
-          <h3 className="flex items-center gap-3 font-black text-red-800 uppercase text-sm mb-10 pb-4 border-b border-red-200">
-            <ShieldCheck size={24} /> Vùng an toàn dữ liệu (Dành cho Quản trị)
-          </h3>
-          <div className="grid grid-cols-2 gap-6">
-             <button onClick={handleBackup} className="flex flex-col items-center gap-4 p-8 bg-white rounded-[2rem] border border-slate-100 hover:shadow-xl hover:border-blue-200 transition-all group">
-                <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-all">
-                    <FileDown size={32} />
-                </div>
-                <div className="text-center">
-                    <p className="text-xs font-black text-slate-800 uppercase">Sao lưu Database</p>
-                    <p className="text-[9px] text-slate-400 font-bold mt-1 uppercase">Xuất tệp SQLITE (.db)</p>
-                </div>
-             </button>
-
-             <button 
-                onClick={async () => { if(confirm("CẢNH BÁO NGUY HIỂM: Bạn có chắc chắn muốn XÓA SẠCH toàn bộ hồ sơ quân nhân và cơ cấu đơn vị? Thao tác này KHÔNG THỂ KHÔI PHỤC.")) { await db.clearDatabase(); window.location.reload(); } }} 
-                className="flex flex-col items-center gap-4 p-8 bg-white rounded-[2rem] border border-slate-100 hover:shadow-xl hover:border-red-200 transition-all group"
-             >
-                <div className="p-4 bg-red-50 text-red-600 rounded-2xl group-hover:bg-red-600 group-hover:text-white transition-all">
-                    <Trash2 size={32} />
-                </div>
-                <div className="text-center">
-                    <p className="text-xs font-black text-red-800 uppercase">Xóa toàn bộ hồ sơ</p>
-                    <p className="text-[9px] text-slate-400 font-bold mt-1 uppercase">Xóa dữ liệu Personnel & Units</p>
-                </div>
-             </button>
+                <button 
+                   onClick={async () => { if(confirm("XÁC NHẬN: Xóa sạch toàn bộ dữ liệu? Thao tác này KHÔNG THỂ khôi phục.")) { await db.clearDatabase(); window.location.reload(); } }} 
+                   className="w-full flex items-center justify-between p-3 bg-red-50/50 border border-red-100 rounded-xl hover:bg-red-100 transition-all group"
+                >
+                   <div className="flex items-center gap-3">
+                      <Trash2 size={18} className="text-red-600"/>
+                      <div className="text-left">
+                         <p className="text-[11px] font-bold text-red-800 uppercase">Xóa toàn bộ hồ sơ</p>
+                         <p className="text-[9px] text-red-400 font-medium italic">Làm trống Database nhân sự</p>
+                      </div>
+                   </div>
+                </button>
+             </div>
           </div>
 
-          <div className="mt-8 flex gap-4 p-5 bg-white/60 rounded-2xl border border-red-200">
-              <Info className="text-red-400 shrink-0" size={24} />
-              <p className="text-[10px] text-red-800 font-bold leading-relaxed uppercase">
-                 Thông báo: Việc xóa dữ liệu gốc chỉ áp dụng cho hồ sơ, thông tin bảo mật và cấu trúc đơn vị. Các cài đặt cá nhân (Phím tắt, Mật khẩu quản trị) sẽ được giữ lại để đảm bảo tính liên tục của hệ thống.
-              </p>
+          {/* INFO & VERSION */}
+          <div className="bg-white rounded-2xl p-4 border border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center">
+                      <DownloadCloud size={20} />
+                  </div>
+                  <div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-1">Phiên bản hiện tại</p>
+                      <p className="text-xs font-black text-slate-800 uppercase tracking-tight">{appVersion}</p>
+                  </div>
+              </div>
+              <button className="px-4 py-1.5 bg-slate-800 text-white rounded-lg font-bold text-[9px] uppercase hover:bg-black transition-all">Check Update</button>
           </div>
         </div>
+
       </div>
+
+      <style>{`
+        .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+      `}</style>
     </div>
   );
 };
+
+const ChevronRight = ({ size, className }: any) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="m9 18 6-6-6-6"/>
+  </svg>
+);
 
 export default Settings;

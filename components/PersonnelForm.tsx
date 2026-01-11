@@ -91,21 +91,27 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   }, [formData.don_vi_id]);
 
   // --- HÀM XỬ LÝ UPLOAD ẢNH (OPTIMIZED - BLOB) ---
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      // Kiểm tra kích thước file (ví dụ: giới hạn 10MB cho thoải mái vì lưu Blob rất nhẹ)
-      if (file.size > 10 * 1024 * 1024) {
-        alert("File ảnh quá lớn (Tối đa 10MB)");
-        return;
-      }
-
-      // OPTIMIZATION: Không dùng FileReader (Base64) nữa.
-      // Lưu trực tiếp File object (Blob) vào state. Dexie DB hỗ trợ lưu Blob.
-      // Ép kiểu 'any' ở đây để tránh lỗi TS nếu types.ts định nghĩa anh_dai_dien là string.
-      setFormData(prev => ({ ...prev, anh_dai_dien: file as any }));
+// Thay thế hàm handleImageUpload cũ bằng hàm này:
+const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (file) {
+    if (file.size > 5 * 1024 * 1024) { // Giới hạn 5MB để tránh lag DB
+      alert("File ảnh quá lớn (Tối đa 5MB)");
+      return;
     }
-  };
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64String = e.target?.result as string;
+      setFormData(prev => ({ ...prev, anh_dai_dien: base64String }));
+    };
+    reader.onerror = (error) => {
+      console.error("Lỗi đọc file:", error);
+      alert("Không thể đọc file ảnh này.");
+    };
+    reader.readAsDataURL(file);
+  }
+};
   // -----------------------------------
 
   // Helper function: Lấy URL hiển thị ảnh (Hỗ trợ cả Blob và Base64 cũ)
@@ -245,14 +251,9 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                   <div className="w-32 h-44 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-50 mb-3 relative overflow-hidden group">
                     {formData.anh_dai_dien ? (
                         <img 
-                          src={getAvatarSrc(formData.anh_dai_dien) || ''} 
+                          src={formData.anh_dai_dien} // Lúc này là chuỗi Base64, hiển thị được ngay
                           className="w-full h-full object-cover" 
                           alt="Avatar" 
-                          // Revoke URL để tránh leak memory khi ảnh load xong (chỉ áp dụng với Blob)
-                          onLoad={(e) => {
-                            const src = (e.target as HTMLImageElement).src;
-                            if (src.startsWith('blob:')) URL.revokeObjectURL(src);
-                          }}
                         />
                     ) : (
                         <span className="text-gray-400 text-[10px] font-bold">Ảnh thẻ</span>

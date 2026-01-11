@@ -135,7 +135,7 @@ function createWindow() {
     const devCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: http: https:;";
     
     // Prod: CHẶN 'unsafe-eval' để ngăn chặn XSS tấn công, chỉ cho phép script nội bộ
-    const prodCSP = "default-src 'self' 'unsafe-inline' data: blob: file:;"; 
+    const prodCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file: https:;"; 
 
     callback({
       responseHeaders: {

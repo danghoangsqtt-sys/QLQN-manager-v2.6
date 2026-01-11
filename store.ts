@@ -172,7 +172,7 @@ class Store {
             educationHigh++;
         }
         
-        ranks[p.cap_bac] = (ranks[p.cap_bac] || 0) + 1;
+        if (p.cap_bac) ranks[p.cap_bac] = (ranks[p.cap_bac] || 0) + 1;
     });
 
     return {

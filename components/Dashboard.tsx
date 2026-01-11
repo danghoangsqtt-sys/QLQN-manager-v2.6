@@ -59,15 +59,36 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   }, [searchTerm]);
 
   const loadData = useCallback(async () => {
-    const pList = await db.getPersonnel(filters);
-    const uList = await db.getUnits();
-    const sList = await db.getShortcuts();
-    const stats = await db.getDashboardStats();
-    setPersonnel(pList);
-    setUnits(uList);
-    setShortcuts(sList);
-    setDashboardStats(stats);
-    setCurrentPage(1);
+    try {
+      // 1. Tải danh sách nhân sự theo bộ lọc
+      const pList = await db.getPersonnel(filters);
+      
+      // 2. Tải danh sách đơn vị & phím tắt
+      const uList = await db.getUnits();
+      const sList = await db.getShortcuts();
+      
+      // 3. [QUAN TRỌNG] Tính toán thống kê trực tiếp từ DB (Bỏ qua main.js)
+      // Sử dụng hàm getDashboardStats() từ store.ts để đếm số liệu thật
+      const stats = await db.getDashboardStats();
+      
+      // 4. Cập nhật dữ liệu vào giao diện
+      setPersonnel(pList);
+      setUnits(uList);
+      setShortcuts(sList);
+      
+      // Nếu không có dữ liệu thống kê, tự tạo dữ liệu mặc định để tránh lỗi null
+      setDashboardStats(stats || {
+          total: pList.length,
+          party: 0,
+          securityAlert: 0,
+          educationHigh: 0,
+          ranks: {}
+      });
+      
+      setCurrentPage(1);
+    } catch (error) {
+      console.error("Lỗi khi tải dữ liệu Dashboard:", error);
+    }
   }, [filters]);
 
   useEffect(() => { loadData(); }, [loadData]);

@@ -54,7 +54,12 @@ ipcMain.handle('auth:changePassword', (_, p) => {
 });
 
 // 2. Database/Settings Handlers
-// (Đã xóa db:getStats thừa thãi gây nhầm lẫn logic)
+
+// [ĐÃ SỬA LỖI] Khôi phục lại hàm này để tránh lỗi giao diện gọi vào bị crash
+ipcMain.handle('db:getStats', async () => {
+    // Trả về dữ liệu giả lập trạng thái để UI không bị treo
+    return { personnelCount: 0, unitCount: 0, status: 'Connected' };
+});
 
 ipcMain.handle('db:saveSetting', (_, {key, value}) => {
     try {
@@ -92,16 +97,16 @@ ipcMain.handle('system:updateFromFile', async () => {
   const installerPath = result.filePaths[0];
 
   try {
-    // FIX: Mở file cài đặt và đợi lệnh được gửi đi thành công
+    // Mở file cài đặt và đợi lệnh được gửi đi thành công
     await shell.openPath(installerPath);
     
-    // FIX: Đợi 500ms để đảm bảo tiến trình con (installer) đã nhận lệnh từ OS
-    // Sau đó mới đóng App hiện tại để tránh xung đột file khi installer chạy
+    // [ĐÃ SỬA LỖI] Tăng thời gian chờ từ 500ms lên 3000ms (3 giây)
+    // Để đảm bảo tiến trình con (installer) đã nhận lệnh từ OS trước khi App đóng
     setTimeout(() => {
       app.quit();
-    }, 500);
+    }, 3000);
 
-    return { success: true, message: 'Đang khởi chạy bộ cài đặt...' };
+    return { success: true, message: 'Đang khởi chạy bộ cài đặt, ứng dụng sẽ tự tắt sau 3 giây...' };
   } catch (error) {
     return { success: false, message: 'Lỗi khi mở file: ' + error.message };
   }

@@ -85,12 +85,22 @@ const VietnamDateInput: React.FC<{
     setDisplayValue(toDisplayDate(value));
   }, [value]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Lấy loại hành động nhập liệu (ví dụ: insertText hay deleteContentBackward)
+    // @ts-ignore
+    const inputType = e.nativeEvent.inputType; 
     let val = e.target.value;
+    
+    // Chỉ giữ lại số và dấu /
     val = val.replace(/[^0-9/]/g, '');
     
-    if (val.length === 2 && !val.includes('/')) val += '/';
-    if (val.length === 5 && val.split('/').length === 2) val += '/';
+    // SỬA LỖI: Chỉ tự động thêm dấu / nếu người dùng KHÔNG bấm nút xóa (Backspace)
+    const isDeleting = inputType === 'deleteContentBackward' || inputType === 'deleteContentForward';
+    
+    if (!isDeleting) {
+        if (val.length === 2 && !val.includes('/')) val += '/';
+        if (val.length === 5 && val.split('/').length === 2) val += '/';
+    }
     
     setDisplayValue(val);
 

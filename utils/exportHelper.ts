@@ -130,7 +130,9 @@ export const exportPersonnelToCSV = (personnelList: MilitaryPersonnel[], fileNam
   `;
 
   // 4. TẠO FILE VÀ TẢI VỀ
-  const blob = new Blob([tableContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const blob = new Blob(['\uFEFF', tableContent], { 
+    type: 'application/vnd.ms-excel;charset=utf-8' 
+});
   
   // Đảm bảo tên file có đuôi .xls
   const finalFileName = fileName.endsWith('.xls') ? fileName : fileName.replace('.csv', '.xls');

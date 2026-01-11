@@ -7,7 +7,8 @@ import {
   Keyboard as KeyboardIcon,
   LayoutDashboard,
   GraduationCap,
-  FileText, MapPin, ChevronLeft, ChevronRight
+  FileText, MapPin, ChevronLeft, ChevronRight,
+  CalendarDays
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { MilitaryPersonnel, Unit, ShortcutConfig } from '../types';
@@ -119,6 +120,33 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       </div>
     </div>
   );
+
+  // Helper để render thanh tiến độ nghỉ phép
+  const LeaveProgressBar = ({ current, total }: { current: number; total: number }) => {
+    const percentage = total > 0 ? Math.min(Math.round((current / total) * 100), 100) : 0;
+    const remaining = Math.max(total - current, 0);
+    
+    let colorClass = "bg-green-500";
+    if (percentage >= 90) colorClass = "bg-red-500";
+    else if (percentage >= 70) colorClass = "bg-amber-500";
+
+    return (
+      <div className="w-full max-w-[140px]">
+        <div className="flex justify-between items-center mb-1">
+          <span className="text-[9px] font-black text-slate-400 uppercase">Phép: {current}/{total}</span>
+          <span className={`text-[9px] font-black uppercase ${remaining === 0 ? 'text-red-500' : 'text-slate-600'}`}>
+            Còn: {remaining}
+          </span>
+        </div>
+        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-200/50 shadow-inner">
+          <div 
+            className={`h-full ${colorClass} transition-all duration-500 rounded-full`} 
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="h-screen bg-[#F0F2F5] flex font-sans text-slate-800 overflow-hidden relative text-sm">
@@ -280,7 +308,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                       </div>
                       
                       <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                          <div className="md:col-span-4 min-w-0">
+                          <div className="md:col-span-3 min-w-0">
                             <p className="text-sm font-bold text-slate-800 group-hover:text-green-700 truncate">{p.ho_ten}</p>
                             <div className="flex items-center gap-2 mt-0.5">
                                <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">{p.cccd}</span>
@@ -288,14 +316,22 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                             </div>
                           </div>
                           
-                          <div className="md:col-span-3">
+                          <div className="md:col-span-2">
                             <p className="text-xs font-bold text-slate-700">{p.cap_bac}</p>
                             <p className="text-[10px] text-slate-500 truncate">{p.chuc_vu || 'Chiến sĩ'}</p>
                           </div>
 
-                          <div className="md:col-span-5 flex flex-wrap items-center gap-2">
+                          <div className="md:col-span-3">
+                            <LeaveProgressBar 
+                              current={p.nghi_phep_thuc_te || 0} 
+                              total={p.nghi_phep_tham_chieu || 12} 
+                            />
+                          </div>
+
+                          <div className="md:col-span-4 flex flex-wrap items-center gap-2">
                             <span className="px-2 py-1 bg-green-50 text-green-700 rounded text-[10px] font-bold border border-green-100 flex items-center gap-1"><MapPin size={10}/> {p.don_vi}</span>
                             {p.vao_dang_ngay && <span className="px-2 py-1 bg-red-50 text-red-600 rounded text-[10px] font-bold border border-red-100 flex items-center gap-1"><ShieldCheck size={10}/> Đảng viên</span>}
+                            {db.hasSecurityAlert(p) && <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded text-[10px] font-bold border border-amber-100 flex items-center gap-1"><ShieldAlert size={10}/> Cảnh báo</span>}
                           </div>
                       </div>
 

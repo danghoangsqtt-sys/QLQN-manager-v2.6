@@ -1,4 +1,3 @@
-
 import { Dexie, type Table } from 'dexie';
 import { MilitaryPersonnel, Unit, LogEntry, LogLevel, ShortcutConfig, CustomField } from './types';
 
@@ -95,15 +94,22 @@ class Store {
     );
   }
 
+  // FIX: Hàm lấy chi tiết đầy đủ (dùng cho Edit/Print)
+  async getPersonnelById(id: string): Promise<MilitaryPersonnel | undefined> {
+    return await dbInstance.personnel.get(id);
+  }
+
+  // FIX: Hàm lấy danh sách tối ưu hóa (dùng Thumbnail thay vì ảnh gốc)
   async getPersonnel(filters: Partial<FilterCriteria> = {}): Promise<MilitaryPersonnel[]> {
     let collection = dbInstance.personnel.toCollection();
 
     if (filters.keyword) {
       const k = filters.keyword.toLowerCase();
+      // FIX: Thêm check null an toàn
       collection = collection.filter(p => 
-        p.ho_ten.toLowerCase().includes(k) || 
-        p.cccd.includes(k) || 
-        p.sdt_rieng?.includes(k)
+        (p.ho_ten || '').toLowerCase().includes(k) || 
+        (p.cccd || '').includes(k) || 
+        (p.sdt_rieng || '').includes(k)
       );
     }
 
@@ -134,7 +140,15 @@ class Store {
     }
 
     const resultArray = await collection.toArray();
-    return resultArray.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    
+    // FIX: HIỆU NĂNG - Chỉ trả về ảnh Thumb cho danh sách
+    const optimizedResult = resultArray.map(p => ({
+        ...p,
+        anh_dai_dien: p.anh_thumb || '', // Dùng ảnh nhỏ để hiển thị list
+        // Nếu không có thumb thì để trống, Dashboard sẽ hiện avatar chữ cái
+    }));
+
+    return optimizedResult.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
 
   async getDashboardStats() {
@@ -283,18 +297,22 @@ class Store {
             return false;
         }
 
-        await dbInstance.personnel.clear();
-        await dbInstance.units.clear();
-        await dbInstance.settings.clear();
+        // FIX: Transaction restore an toàn
+        await dbInstance.transaction('rw', dbInstance.personnel, dbInstance.units, dbInstance.settings, async () => {
+            await dbInstance.personnel.clear();
+            await dbInstance.units.clear();
+            await dbInstance.settings.clear();
 
-        if (jsonData.data.personnel.length) await dbInstance.personnel.bulkAdd(jsonData.data.personnel);
-        if (jsonData.data.units.length) await dbInstance.units.bulkAdd(jsonData.data.units);
-        if (jsonData.data.settings.length) await dbInstance.settings.bulkAdd(jsonData.data.settings);
+            if (jsonData.data.personnel.length) await dbInstance.personnel.bulkAdd(jsonData.data.personnel);
+            if (jsonData.data.units.length) await dbInstance.units.bulkAdd(jsonData.data.units);
+            if (jsonData.data.settings.length) await dbInstance.settings.bulkAdd(jsonData.data.settings);
+        });
         
         this.log('SYSTEM', `Khôi phục dữ liệu từ bản sao lưu ngày ${new Date(jsonData.timestamp).toLocaleDateString()}`);
         return true;
     } catch (e) {
-        console.error(e);
+        console.error("Restore failed:", e);
+        this.log('ERROR', `Lỗi khôi phục dữ liệu: ${e}`);
         return false;
     }
   }

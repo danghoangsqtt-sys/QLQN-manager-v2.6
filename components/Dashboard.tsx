@@ -1,15 +1,13 @@
-
 import { 
   Search, FileDown, LogOut, 
   Users, Trash2, Eye,
   ShieldCheck, Landmark, UserPlus,
-  Filter, X, Printer, BookOpen, ShieldAlert, 
+  Filter, Printer, BookOpen, ShieldAlert, 
   Keyboard as KeyboardIcon,
   LayoutDashboard,
   GraduationCap,
   FileText, MapPin, ChevronLeft, ChevronRight,
-  CalendarDays,
-  Shield
+  FileEdit
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { MilitaryPersonnel, Unit, ShortcutConfig } from '../types';
@@ -29,6 +27,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<'units' | 'settings' | 'overview'>('overview');
   const [personnel, setPersonnel] = useState<MilitaryPersonnel[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [shortcuts, setShortcuts] = useState<ShortcutConfig[]>([]);
   
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -73,12 +72,19 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const handlePrint = (person: MilitaryPersonnel) => {
-    setPrintingPerson(person);
-    setTimeout(() => {
-      window.print();
-      setPrintingPerson(undefined);
-    }, 600);
+  const handlePrint = async (person: MilitaryPersonnel) => {
+    try {
+        const fullData = await db.getPersonnelById(person.id);
+        if (fullData) {
+            setPrintingPerson(fullData);
+            setTimeout(() => {
+              window.print();
+              setPrintingPerson(undefined);
+            }, 600);
+        }
+    } catch (error) {
+        console.error("Lỗi khi chuẩn bị in:", error);
+    }
   };
 
   const handleExportCSV = () => {
@@ -108,6 +114,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
   const totalPages = Math.ceil(sortedPersonnel.length / ITEMS_PER_PAGE);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const StatCard = ({ title, value, icon: Icon, color, unitLabel, bgColor }: any) => (
     <div className={`bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between group hover:border-green-600/30 hover:shadow-md transition-all`}>
       <div>
@@ -123,7 +130,6 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     </div>
   );
 
-  // Helper để render thanh tiến độ nghỉ phép
   const LeaveProgressBar = ({ current, total }: { current: number; total: number }) => {
     const percentage = total > 0 ? Math.min(Math.round((current / total) * 100), 100) : 0;
     const remaining = Math.max(total - current, 0);
@@ -156,12 +162,11 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       <ProfilePrintTemplate data={printingPerson} />
 
       <div className="w-64 bg-[#14452F] flex flex-col shadow-xl shrink-0 z-20 no-print">
-        {/* LOGO NHẬN DIỆN MỚI */}
         <div className="p-6 text-center border-b border-white/5 bg-[#0d2d1f]">
           <div className="flex flex-col items-center gap-2 mb-1">
              <div className="relative">
                 <div className="absolute inset-0 bg-green-400 blur-[15px] opacity-20"></div>
-                <Shield className="text-white w-8 h-8 relative z-10 drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]" strokeWidth={2} />
+                <Users className="text-white w-8 h-8 relative z-10 drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]" strokeWidth={2} />
              </div>
              <h1 className="text-white font-black text-[13px] tracking-[0.1em] uppercase leading-tight mt-1">
                 QLQN MANAGER<br/>SYSTEM
@@ -270,52 +275,38 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               {showAdvancedFilter && (
                 <div className="bg-white p-5 rounded-xl border border-green-100 shadow-sm animate-slide-down">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Chính trị</label>
-                      <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.political} onChange={e => setFilters({...filters, political: e.target.value as any})}>
-                        <option value="all">Tất cả</option>
-                        <option value="dang_vien">Đảng viên</option>
-                        <option value="quan_chung">Quần chúng</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Học vấn</label>
-                      <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.education} onChange={e => setFilters({...filters, education: e.target.value as any})}>
-                        <option value="all">Tất cả</option>
-                        <option value="12_12">12/12</option>
-                        <option value="dai_hoc">Đại học</option>
-                        <option value="cao_dang">Cao đẳng</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Hôn nhân</label>
-                      <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.marital} onChange={e => setFilters({...filters, marital: e.target.value as any})}>
-                        <option value="all">Tất cả</option>
-                        <option value="da_vo">Đã kết hôn</option>
-                        <option value="chua_vo">Độc thân</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">An ninh</label>
-                      <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.security} onChange={e => setFilters({...filters, security: e.target.value as any})}>
-                        <option value="all">Tất cả</option>
-                        <option value="canh_bao">Cảnh báo An ninh</option>
-                        <option value="vay_no">Vay nợ</option>
-                        <option value="vi_pham">Vi phạm kỷ luật</option>
-                        <option value="nuoc_ngoai">Yếu tố nước ngoài</option>
-                      </select>
-                    </div>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Chính trị</label><select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.political} onChange={e => setFilters({...filters, political: e.target.value as any})}><option value="all">Tất cả</option><option value="dang_vien">Đảng viên</option><option value="quan_chung">Quần chúng</option></select></div>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Học vấn</label><select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.education} onChange={e => setFilters({...filters, education: e.target.value as any})}><option value="all">Tất cả</option><option value="12_12">12/12</option><option value="dai_hoc">Đại học</option><option value="cao_dang">Cao đẳng</option></select></div>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Hôn nhân</label><select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.marital} onChange={e => setFilters({...filters, marital: e.target.value as any})}><option value="all">Tất cả</option><option value="da_vo">Đã kết hôn</option><option value="chua_vo">Độc thân</option></select></div>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">An ninh</label><select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-green-500" value={filters.security} onChange={e => setFilters({...filters, security: e.target.value as any})}><option value="all">Tất cả</option><option value="canh_bao">Cảnh báo An ninh</option><option value="vay_no">Vay nợ</option><option value="vi_pham">Vi phạm kỷ luật</option><option value="nuoc_ngoai">Yếu tố nước ngoài</option></select></div>
                   </div>
                 </div>
               )}
 
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="divide-y divide-slate-100">
-                  {paginatedPersonnel.map((p, i) => (
+                  {paginatedPersonnel.map((p) => (
                     <div key={p.id} className="p-3 flex items-center gap-4 hover:bg-slate-50 transition-colors group">
-                      <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-green-800 font-bold text-lg border border-slate-200 overflow-hidden shrink-0">
-                          {p.anh_dai_dien ? <img src={p.anh_dai_dien} className="w-full h-full object-cover" /> : p.ho_ten.charAt(0)}
+                      
+                      {/* --- FIX: LOGIC HIỂN THỊ ẢNH --- */}
+                      <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-200 overflow-hidden shrink-0 relative">
+                          {p.anh_dai_dien && p.anh_dai_dien.startsWith('data:image') ? (
+                              <img 
+                                src={p.anh_dai_dien} 
+                                alt={p.ho_ten} 
+                                className="w-full h-full object-cover" 
+                                loading="lazy" 
+                              />
+                          ) : (
+                              // Nếu không có ảnh thì hiện chữ cái đầu
+                              <span className="text-green-800 font-bold text-lg">{p.ho_ten.charAt(0)}</span>
+                          )}
                       </div>
+                      {/* ------------------------------- */}
                       
                       <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
                           <div className="md:col-span-3 min-w-0">
@@ -347,10 +338,28 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
                       <div className="flex gap-1 shrink-0 opacity-80 group-hover:opacity-100">
                           <button 
-                            onClick={() => { 
-                              setEditingPerson(p); 
-                              setIsViewMode(true); 
-                              setIsFormOpen(true); 
+                            onClick={async () => { 
+                              const fullInfo = await db.getPersonnelById(p.id);
+                              if (fullInfo) {
+                                  setEditingPerson(fullInfo); 
+                                  setIsViewMode(false); 
+                                  setIsFormOpen(true); 
+                              }
+                            }} 
+                            className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-all" 
+                            title="Chỉnh sửa"
+                          >
+                            <FileEdit size={18} />
+                          </button>
+
+                          <button 
+                            onClick={async () => { 
+                              const fullInfo = await db.getPersonnelById(p.id);
+                              if (fullInfo) {
+                                  setEditingPerson(fullInfo); 
+                                  setIsViewMode(true); 
+                                  setIsFormOpen(true); 
+                              }
                             }} 
                             className="p-2 text-slate-400 hover:text-green-700 hover:bg-green-50 rounded transition-all" 
                             title="Xem chi tiết"

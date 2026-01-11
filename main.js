@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const isDev = require('electron-is-dev');
 
-// CẤU HÌNH BẢO MẬT & DỮ LIỆU
+// --- CẤU HÌNH BẢO MẬT & DỮ LIỆU ---
 const PASSWORD_SALT = 'DHsystem_Salt_2026_Dexie';
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'app_secure_settings.json');
@@ -28,22 +28,21 @@ function hashPassword(password) {
 }
 
 // --- IPC HANDLERS ---
-// Cập nhật logic Login để tự động lưu hash mật khẩu mặc định nếu chưa có
+
+// 1. Auth Handlers
 ipcMain.handle('auth:login', (_, p) => {
   const settings = readSecureSettings();
   let stored = settings['admin_password'];
   
-  // Nếu chưa có mật khẩu trong file setting (lần đầu chạy)
+  // Nếu chưa có mật khẩu (lần đầu chạy)
   if (!stored) {
       if (p === '123456') {
-          // Lưu ngay mật khẩu mặc định dưới dạng hash để bảo mật cho lần sau
           settings['admin_password'] = hashPassword('123456');
           writeSecureSettings(settings);
           return true;
       }
       return false;
   }
-  
   return hashPassword(p) === stored;
 });
 
@@ -54,9 +53,9 @@ ipcMain.handle('auth:changePassword', (_, p) => {
   return true;
 });
 
-// Thêm handler giả lập để tránh lỗi nếu preload gọi (dù store dùng dexie)
-ipcMain.handle('db:getStats', async () => ({ status: 'OK' }));
-// Thêm Handler lưu setting thực sự
+// 2. Database/Settings Handlers
+// (Đã xóa db:getStats thừa thãi gây nhầm lẫn logic)
+
 ipcMain.handle('db:saveSetting', (_, {key, value}) => {
     try {
         const settings = readSecureSettings();
@@ -68,9 +67,44 @@ ipcMain.handle('db:saveSetting', (_, {key, value}) => {
         return false;
     }
 });
+
 ipcMain.handle('db:getSetting', (_, key) => {
     const settings = readSecureSettings();
     return settings[key];
+});
+
+// 3. System Handlers (Update Logic đã sửa)
+ipcMain.handle('system:updateFromFile', async () => {
+  const win = BrowserWindow.getFocusedWindow();
+  
+  const result = await dialog.showOpenDialog(win, {
+    title: 'Chọn file cài đặt phiên bản mới',
+    properties: ['openFile'],
+    filters: [
+      { name: 'File cài đặt', extensions: ['exe'] }
+    ]
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, message: 'Đã hủy chọn file.' };
+  }
+
+  const installerPath = result.filePaths[0];
+
+  try {
+    // FIX: Mở file cài đặt và đợi lệnh được gửi đi thành công
+    await shell.openPath(installerPath);
+    
+    // FIX: Đợi 500ms để đảm bảo tiến trình con (installer) đã nhận lệnh từ OS
+    // Sau đó mới đóng App hiện tại để tránh xung đột file khi installer chạy
+    setTimeout(() => {
+      app.quit();
+    }, 500);
+
+    return { success: true, message: 'Đang khởi chạy bộ cài đặt...' };
+  } catch (error) {
+    return { success: false, message: 'Lỗi khi mở file: ' + error.message };
+  }
 });
 
 // --- WINDOW MANAGEMENT ---
@@ -86,17 +120,17 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      webSecurity: true,
+      webSecurity: true, // Luôn bật webSecurity
     }
   });
 
-  // Cấu hình CSP (Đã sửa để chạy được Dev mode)
+  // FIX: Cấu hình CSP chặt chẽ hơn cho Production
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    // Dev: Cho phép lỏng lẻo để hot-reload hoạt động
     const devCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: http: https:;";
     
-    // Sửa prodCSP: Bỏ fonts.googleapis.com, fonts.gstatic.com
-    // Thêm media-src nếu có video/ảnh
-    const prodCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file:;"; 
+    // Prod: CHẶN 'unsafe-eval' để ngăn chặn XSS tấn công, chỉ cho phép script nội bộ
+    const prodCSP = "default-src 'self' 'unsafe-inline' data: blob: file:;"; 
 
     callback({
       responseHeaders: {
@@ -104,14 +138,13 @@ function createWindow() {
         'Content-Security-Policy': [ isDev ? devCSP : prodCSP ]
       }
     });
-});
+  });
 
   if (isDev) {
     console.log('Running in Development Mode');
     win.loadURL('http://localhost:3000'); 
   } else {
     console.log('Running in Production Mode');
-    // Sửa đường dẫn để trỏ đúng vào thư mục dist khi build
     win.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
 
@@ -125,6 +158,7 @@ function createWindow() {
 // --- APP LIFECYCLE ---
 app.whenReady().then(() => {
   createWindow();
+  // Giữ UserAgent custom để định danh
   session.defaultSession.setUserAgent(session.defaultSession.getUserAgent() + ' QNManager/7.0');
 });
 
@@ -134,38 +168,4 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
-});
-
-ipcMain.handle('system:updateFromFile', async () => {
-  const win = BrowserWindow.getFocusedWindow();
-  
-  // 1. Mở hộp thoại để người dùng chọn file cài đặt mới (.exe)
-  const result = await dialog.showOpenDialog(win, {
-    title: 'Chọn file cài đặt phiên bản mới',
-    properties: ['openFile'],
-    filters: [
-      { name: 'File cài đặt', extensions: ['exe'] } // Chỉ cho chọn file .exe
-    ]
-  });
-
-  // Nếu người dùng hủy chọn hoặc không chọn file
-  if (result.canceled || result.filePaths.length === 0) {
-    return { success: false, message: 'Đã hủy chọn file.' };
-  }
-
-  const installerPath = result.filePaths[0];
-
-  try {
-    // 2. Mở file cài đặt lên
-    await shell.openPath(installerPath);
-    
-    // 3. Tắt ứng dụng hiện tại sau 1 giây để bộ cài đặt mới có thể ghi đè file
-    setTimeout(() => {
-      app.quit();
-    }, 1000);
-
-    return { success: true, message: 'Đang khởi chạy bộ cài đặt...' };
-  } catch (error) {
-    return { success: false, message: 'Lỗi khi mở file: ' + error.message };
-  }
 });

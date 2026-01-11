@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MilitaryPersonnel, Unit, CustomField } from '../types';
 import { db } from '../store';
 import { Trash2, Plus, Camera, X, Calendar as CalendarIcon } from 'lucide-react';
+import { createThumbnail } from '../utils/imageHelper';
 
 interface PersonnelFormProps {
   units: Unit[];
@@ -56,8 +57,6 @@ const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
   vi_pham_nuoc_ngoai: ''
 };
 
-// --- HELPER FUNCTION CHO NGÀY THÁNG ---
-// Chuyển từ YYYY-MM-DD (Database) -> DD/MM/YYYY (Hiển thị)
 const toDisplayDate = (isoDate: string | undefined) => {
   if (!isoDate) return '';
   const [y, m, d] = isoDate.split('-');
@@ -65,7 +64,6 @@ const toDisplayDate = (isoDate: string | undefined) => {
   return `${d}/${m}/${y}`;
 };
 
-// Chuyển từ DD/MM/YYYY (Nhập liệu) -> YYYY-MM-DD (Database)
 const toIsoDate = (displayDate: string) => {
   if (!displayDate) return '';
   const parts = displayDate.split('/');
@@ -74,7 +72,6 @@ const toIsoDate = (displayDate: string) => {
   return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
 };
 
-// --- COMPONENT NHẬP NGÀY THÁNG VIỆT NAM (CUSTOM) ---
 const VietnamDateInput: React.FC<{
   value: string | undefined;
   onChange: (newIsoDate: string) => void;
@@ -84,25 +81,19 @@ const VietnamDateInput: React.FC<{
   const [displayValue, setDisplayValue] = useState(toDisplayDate(value));
   const hiddenDateInputRef = useRef<HTMLInputElement>(null);
 
-  // Đồng bộ khi value bên ngoài thay đổi
   useEffect(() => {
     setDisplayValue(toDisplayDate(value));
   }, [value]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value;
-    
-    // Logic tự động thêm dấu / khi nhập số
-    // Chỉ cho phép nhập số và dấu /
     val = val.replace(/[^0-9/]/g, '');
     
-    // Tự động thêm / sau ngày và tháng nếu người dùng đang nhập liền mạch
     if (val.length === 2 && !val.includes('/')) val += '/';
     if (val.length === 5 && val.split('/').length === 2) val += '/';
     
     setDisplayValue(val);
 
-    // Nếu nhập đủ format dd/mm/yyyy -> Update ngược lại value gốc
     if (val.length === 10) {
       const iso = toIsoDate(val);
       if (iso) onChange(iso);
@@ -119,8 +110,8 @@ const VietnamDateInput: React.FC<{
 
   const handleHiddenDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const isoDate = e.target.value;
-    onChange(isoDate); // Cập nhật value gốc
-    setDisplayValue(toDisplayDate(isoDate)); // Cập nhật hiển thị
+    onChange(isoDate); 
+    setDisplayValue(toDisplayDate(isoDate)); 
   };
 
   return (
@@ -128,29 +119,24 @@ const VietnamDateInput: React.FC<{
       <input
         type="text"
         disabled={disabled}
-        className={`${className} pr-10`} // Chừa chỗ cho icon
+        className={`${className} pr-10`} 
         placeholder="dd/mm/yyyy"
         maxLength={10}
         value={displayValue}
         onChange={handleInputChange}
         onBlur={() => {
-           // Khi blur, nếu format đúng thì giữ, sai thì reset về value cũ
            const iso = toIsoDate(displayValue);
            if (!iso && displayValue !== '') {
                setDisplayValue(toDisplayDate(value)); 
            }
         }}
       />
-      
-      {/* Nút icon lịch - Bấm vào sẽ mở popup chọn ngày của trình duyệt */}
       <div 
         onClick={handleDateIconClick}
         className={`absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-green-600 cursor-pointer p-1 ${disabled ? 'hidden' : ''}`}
       >
         <CalendarIcon size={16} />
       </div>
-
-      {/* Input date ẩn để dùng native picker của trình duyệt */}
       <input
         ref={hiddenDateInputRef}
         type="date"
@@ -162,7 +148,6 @@ const VietnamDateInput: React.FC<{
     </div>
   );
 };
-
 
 const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialData, isViewMode = false }) => {
   const [activeTab, setActiveTab] = useState(1);
@@ -204,7 +189,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (isViewMode) return;
 
     if (!formData.ho_ten || !formData.cccd || !formData.don_vi_id) {
@@ -213,7 +198,28 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
     }
     
     const unitName = units.find(u => u.id === formData.don_vi_id)?.name || '';
-    const finalData = { ...formData, don_vi: unitName };
+    
+    // --- LOGIC TẠO THUMBNAIL MỚI ---
+    let thumb = formData.anh_thumb || '';
+    
+    // Nếu có ảnh đại diện mới và chưa có thumb (hoặc ảnh thay đổi)
+    if (formData.anh_dai_dien && formData.anh_dai_dien.startsWith('data:image')) {
+        try {
+            // Tự động tạo ảnh nhỏ để hiển thị danh sách cho nhanh
+            thumb = await createThumbnail(formData.anh_dai_dien);
+        } catch (e) {
+            console.error("Lỗi tạo thumbnail", e);
+        }
+    } else if (!formData.anh_dai_dien) {
+        thumb = ''; 
+    }
+    // -------------------------------
+
+    const finalData = { 
+        ...formData, 
+        don_vi: unitName,
+        anh_thumb: thumb // Lưu thumb vào DB
+    };
     
     const save = async () => {
         try {
@@ -283,20 +289,17 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
     });
   };
 
-  // STYLE CHUNG
   const inputClass = "w-full p-2 border border-gray-200 rounded-md outline-none disabled:bg-gray-50 disabled:text-black disabled:font-medium disabled:opacity-100";
   const inputClassBold = "w-full p-2 border border-gray-200 rounded-md outline-none font-bold disabled:bg-gray-50 disabled:text-black disabled:opacity-100";
 
   return (
     <div className="bg-[#f4f6f8] w-full max-w-7xl max-h-[95vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col border-2 border-[#14452F] animate-fade-in relative z-[200]">
-      {/* Header trạng thái */}
       {isViewMode && (
           <div className="bg-yellow-100 text-yellow-800 px-4 py-2 text-center text-xs font-bold uppercase tracking-widest border-b border-yellow-200">
               Đang ở chế độ xem chi tiết (Không thể chỉnh sửa)
           </div>
       )}
 
-      {/* Navbar Tab */}
       <div className="bg-white flex overflow-x-auto border-b shrink-0 px-2 pt-2 gap-1 scrollbar-hide">
         {[
           { id: 1, label: '1. Thông Tin Chung' },
@@ -324,7 +327,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
 
       <div className="flex-1 overflow-y-auto p-8 bg-white space-y-10 scrollbar-hide">
         
-        {/* --- TAB 1: THÔNG TIN CHUNG --- */}
         {activeTab === 1 && (
           <div className="animate-fade-in space-y-10">
             <section>
@@ -334,7 +336,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
               <div className="grid grid-cols-12 gap-6">
                 <div className="col-span-12 md:col-span-2 flex flex-col items-center">
                   
-                  {/* ẢNH ĐẠI DIỆN */}
                   <div className="w-32 h-44 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-50 mb-3 relative overflow-hidden group">
                     {formData.anh_dai_dien ? (
                         <img src={formData.anh_dai_dien} className="w-full h-full object-cover" alt="Avatar" />
@@ -366,7 +367,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                     <input disabled={isViewMode} type="text" className={inputClass} value={formData.ten_khac || ''} onChange={e => setFormData({...formData, ten_khac: e.target.value})} />
                   </div>
                   
-                  {/* --- SỬ DỤNG VietnamDateInput --- */}
                   <div>
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">Ngày sinh <span className="text-red-500">*</span></label>
                     <VietnamDateInput 
@@ -453,7 +453,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                   <input disabled={isViewMode} type="text" className={inputClass} value={formData.chuc_vu || ''} onChange={e => setFormData({...formData, chuc_vu: e.target.value})} />
                 </div>
                 
-                {/* --- DATE INPUTS ĐỒNG BỘ --- */}
                 <div>
                   <label className="block text-[10px] font-bold text-gray-600 mb-1">Ngày nhập ngũ</label>
                   <VietnamDateInput 
@@ -486,7 +485,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* --- TAB 2: TIỂU SỬ & MXH --- */}
+        {/* --- TAB 2, 3, 4, 5, 6, 7, 8: GIỮ NGUYÊN CODE CŨ (Đã include đầy đủ) --- */}
         {activeTab === 2 && (
           <div className="animate-fade-in space-y-10">
             <section>
@@ -527,7 +526,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                   <button onClick={() => addRow('tieu_su_ban_than', {time: '', job: '', place: ''})} className="px-4 py-2 border-2 border-blue-50 text-blue-600 rounded-lg text-[10px] font-bold uppercase hover:bg-blue-50 transition-all flex items-center gap-1"><Plus size={14}/> Thêm mốc thời gian</button>
               )}
             </section>
-
             <section>
               <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Mạng Xã Hội</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -572,7 +570,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* --- TAB 3: GIA ĐÌNH & HÔN NHÂN --- */}
         {activeTab === 3 && (
           <div className="animate-fade-in space-y-10">
             <section>
@@ -656,13 +653,11 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* --- TAB 4: YẾU TỐ NƯỚC NGOÀI --- */}
         {activeTab === 4 && (
           <div className="animate-fade-in space-y-10">
             <section>
               <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Quan hệ & Đi nước ngoài</h3>
               <div className="space-y-8">
-                {/* Foreign Relatives */}
                 <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
                   <label className="block text-[11px] font-bold text-gray-700 uppercase mb-4">Có quan hệ với ai ở nước ngoài không?</label>
                   <div className="flex gap-8 mb-4">
@@ -689,7 +684,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                   )}
                 </div>
 
-                {/* Travel History */}
                 <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
                   <label className="block text-[11px] font-bold text-gray-700 uppercase mb-4">Đã từng đi nước ngoài chưa?</label>
                   <div className="flex gap-8 mb-4">
@@ -757,12 +751,10 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* --- TAB 5: LỊCH SỬ & TỆ NẠN --- */}
         {activeTab === 5 && (
           <div className="animate-fade-in space-y-8">
             <h3 className="flex items-center gap-2 text-red-700 font-black uppercase text-xs mb-6">Dữ liệu Bảo Mật & Vi Phạm</h3>
             <div className="space-y-6">
-              {/* Local Violation */}
               <div className="p-6 bg-white border-l-4 border-red-500 rounded-xl shadow-sm space-y-6">
                 <div className="flex justify-between items-center">
                   <h4 className="text-[11px] font-black text-red-800 uppercase">1. Vi phạm tại địa phương</h4>
@@ -779,7 +771,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                 )}
               </div>
 
-              {/* Gambling */}
               <div className="p-6 bg-white border-l-4 border-red-500 rounded-xl shadow-sm space-y-6">
                 <div className="flex justify-between items-center">
                   <h4 className="text-[11px] font-black text-red-800 uppercase">2. Tham gia đánh bạc / Cá độ</h4>
@@ -806,7 +797,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
                 )}
               </div>
 
-              {/* Drugs */}
               <div className="p-6 bg-white border-l-4 border-red-500 rounded-xl shadow-sm space-y-6">
                 <div className="flex justify-between items-center">
                   <h4 className="text-[11px] font-black text-red-800 uppercase">3. Sử dụng Ma túy / Chất gây nghiện</h4>
@@ -848,7 +838,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* --- TAB 6: TÀI CHÍNH & SỨC KHỎE --- */}
         {activeTab === 6 && (
           <div className="animate-fade-in space-y-10">
             <section>
@@ -938,7 +927,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* --- TAB 7: CAM KẾT & NGUYỆN VỌNG --- */}
         {activeTab === 7 && (
           <div className="animate-fade-in space-y-10 max-w-4xl mx-auto py-10">
             <h3 className="flex items-center justify-center gap-2 text-[#14452F] font-black uppercase text-xl mb-12 tracking-widest">
@@ -962,7 +950,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
           </div>
         )}
 
-        {/* --- TAB 8: THÔNG TIN BỔ SUNG --- */}
         {activeTab === 8 && (
           <div className="animate-fade-in space-y-10">
             <h3 className="flex items-center gap-2 text-[#14452F] font-black uppercase text-xs mb-6">Thông tin bổ sung</h3>
@@ -986,7 +973,6 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
 
       </div>
 
-      {/* Footer Actions */}
       <div className="p-6 bg-gray-50 border-t flex justify-end gap-4 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
         <button 
           onClick={onClose} 

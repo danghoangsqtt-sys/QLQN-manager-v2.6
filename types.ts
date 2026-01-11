@@ -87,6 +87,7 @@ export interface MilitaryPersonnel {
   dan_toc: string;
   ton_giao: string;
   anh_dai_dien: string;
+  anh_thumb?: string;
   nhap_ngu_ngay: string;
   vao_dang_ngay: string;
   ngay_vao_doan: string;

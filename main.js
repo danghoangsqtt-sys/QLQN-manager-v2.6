@@ -28,12 +28,22 @@ function hashPassword(password) {
 }
 
 // --- IPC HANDLERS ---
-// Sửa handler login để an toàn hơn
+// Cập nhật logic Login để tự động lưu hash mật khẩu mặc định nếu chưa có
 ipcMain.handle('auth:login', (_, p) => {
   const settings = readSecureSettings();
-  const stored = settings['admin_password'];
-  // Nếu chưa có pass, mặc định là 123456 (hash sẵn hoặc check text thuần nếu lần đầu)
-  if (!stored) return p === '123456'; 
+  let stored = settings['admin_password'];
+  
+  // Nếu chưa có mật khẩu trong file setting (lần đầu chạy)
+  if (!stored) {
+      if (p === '123456') {
+          // Lưu ngay mật khẩu mặc định dưới dạng hash để bảo mật cho lần sau
+          settings['admin_password'] = hashPassword('123456');
+          writeSecureSettings(settings);
+          return true;
+      }
+      return false;
+  }
+  
   return hashPassword(p) === stored;
 });
 
@@ -96,8 +106,6 @@ function createWindow() {
   if (isDev) {
     console.log('Running in Development Mode');
     win.loadURL('http://localhost:3000'); 
-    // Đã tắt tự động bật console. Nếu cần debug, nhấn Ctrl+Shift+I
-    // win.webContents.openDevTools(); 
   } else {
     console.log('Running in Production Mode');
     // Sửa đường dẫn để trỏ đúng vào thư mục dist khi build

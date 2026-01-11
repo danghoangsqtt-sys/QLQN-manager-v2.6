@@ -53,30 +53,6 @@ ipcMain.handle('auth:changePassword', (_, p) => {
   return true;
 });
 
-// 2. Database/Settings Handlers
-
-// [ĐÃ SỬA LỖI] Khôi phục lại hàm này để tránh lỗi giao diện gọi vào bị crash
-ipcMain.handle('db:getStats', async () => {
-    // Trả về dữ liệu giả lập trạng thái để UI không bị treo
-    return { personnelCount: 0, unitCount: 0, status: 'Connected' };
-});
-
-ipcMain.handle('db:saveSetting', (_, {key, value}) => {
-    try {
-        const settings = readSecureSettings();
-        settings[key] = value;
-        writeSecureSettings(settings);
-        return true;
-    } catch (e) {
-        console.error(e);
-        return false;
-    }
-});
-
-ipcMain.handle('db:getSetting', (_, key) => {
-    const settings = readSecureSettings();
-    return settings[key];
-});
 
 // 3. System Handlers (Update Logic đã sửa)
 ipcMain.handle('system:updateFromFile', async () => {
@@ -135,7 +111,7 @@ function createWindow() {
     const devCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: http: https:;";
     
     // Prod: CHẶN 'unsafe-eval' để ngăn chặn XSS tấn công, chỉ cho phép script nội bộ
-    const prodCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file: https:;"; 
+    const prodCSP = "default-src 'self' 'unsafe-inline' data: blob: file: https:;"; 
 
     callback({
       responseHeaders: {

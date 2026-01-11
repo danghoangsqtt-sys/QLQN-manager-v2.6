@@ -141,7 +141,7 @@ class Store {
     // [THÊM] Bảo vệ hiệu năng: Nếu không lọc gì cả, giới hạn 200 bản ghi đầu tiên
     // Giúp tránh treo máy nếu dữ liệu quá lớn
     if (!filters.keyword && (!filters.unitId || filters.unitId === 'all') && !filters.rank && !filters.security) {
-        collection = collection.limit(200);
+        collection = collection.limit(5000);
     }
 
     const resultArray = await collection.toArray();

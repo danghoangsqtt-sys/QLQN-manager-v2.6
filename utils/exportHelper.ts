@@ -135,7 +135,11 @@ export const exportPersonnelToCSV = (personnelList: MilitaryPersonnel[], fileNam
 });
   
   // Đảm bảo tên file có đuôi .xls
-  const finalFileName = fileName.endsWith('.xls') ? fileName : fileName.replace('.csv', '.xls');
+  let finalFileName = fileName;
+if (!finalFileName.toLowerCase().endsWith('.xls')) {
+    // Nếu có đuôi khác (vd .csv) thì thay thế, nếu không có thì thêm vào
+    finalFileName = finalFileName.replace(/\.[^/.]+$/, "") + ".xls"; 
+}
   
   const link = document.createElement("a");
   const url = URL.createObjectURL(blob);

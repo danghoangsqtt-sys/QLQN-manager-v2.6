@@ -128,6 +128,34 @@ const DEFAULT_DATA: any = {
   vi_pham_nuoc_ngoai: false
 };
 
+// Thêm hàm helper này vào bên ngoài hoặc trong component
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+  });
+};
+
+// Sửa lại hàm handleImageUpload
+const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (file) {
+    try {
+      // BƯỚC 1: Chuyển File -> Base64
+      const base64String = await fileToBase64(file);
+      
+      // BƯỚC 2: Tạo thumbnail từ Base64
+      const thumbBase64 = await createThumbnail(base64String, 800, 0.8);
+      
+      setFormData({ ...formData, anh_dai_dien: thumbBase64, anh_thumb: thumbBase64 });
+    } catch (err) {
+      console.error("Lỗi xử lý ảnh:", err);
+    }
+  }
+};
+
 const VietnamDateInput = ({ value, onChange, disabled, placeholder = "dd/mm/yyyy", className }: any) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value;
@@ -307,12 +335,36 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
       return;
     }
     
+    // Sao chép formData để xử lý
     const saveData = { ...formData };
-    const rels = formData.quan_he_gia_dinh.than_nhan;
     
-    saveData.quan_he_gia_dinh.vo = rels.find((r:any) => r.moi_quan_he === 'Vợ' || r.moi_quan_he === 'Chồng') || null;
-    saveData.quan_he_gia_dinh.con = rels.filter((r:any) => ['Con trai', 'Con gái', 'Con nuôi'].includes(r.moi_quan_he));
-    saveData.quan_he_gia_dinh.ban_gai = rels.find((r:any) => r.moi_quan_he === 'Bạn gái') || null;
+    // Lấy danh sách thân nhân từ form đang nhập
+    const rels = formData.quan_he_gia_dinh.than_nhan || [];
+    
+    // --- KHẮC PHỤC LỖI TẠI ĐÂY ---
+    
+    // 1. Map Vợ/Chồng
+    saveData.quan_he_gia_dinh.vo = rels.find((r:any) => 
+        ['Vợ', 'Chồng'].includes(r.moi_quan_he)) || null;
+
+    // 2. Map Con cái
+    saveData.quan_he_gia_dinh.con = rels.filter((r:any) => 
+        ['Con trai', 'Con gái', 'Con nuôi'].includes(r.moi_quan_he));
+    
+    // 3. Map Người yêu/Bạn gái
+    saveData.quan_he_gia_dinh.nguoi_yeu = rels.filter((r:any) => 
+        ['Bạn gái', 'Người yêu'].includes(r.moi_quan_he)); // Lưu ý: types.ts dùng key là 'nguoi_yeu' chứ không phải 'ban_gai' (cần check lại types.ts)
+
+    // 4. Map Cha mẹ, Anh chị em (QUAN TRỌNG: Đây là phần bị thiếu)
+    // Lọc lấy những người KHÔNG PHẢI là vợ, chồng, con, người yêu
+    const excludedRoles = ['Vợ', 'Chồng', 'Con trai', 'Con gái', 'Con nuôi', 'Bạn gái', 'Người yêu'];
+    saveData.quan_he_gia_dinh.cha_me_anh_em = rels.filter((r:any) => 
+        !excludedRoles.includes(r.moi_quan_he));
+
+    // Xóa trường 'than_nhan' thừa (vì nó chỉ dùng cho UI, không có trong DB schema types.ts)
+    if (saveData.quan_he_gia_dinh.than_nhan) {
+        delete saveData.quan_he_gia_dinh.than_nhan;
+    }
 
     try {
       if (initialData?.id) {
@@ -323,9 +375,9 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
       onClose();
     } catch (e) {
       console.error(e);
-      alert("Lỗi khi lưu dữ liệu");
+      alert("Lỗi khi lưu dữ liệu: " + e);
     }
-  };
+};
 
   const inputClass = `w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600/20 transition-all disabled:bg-slate-50 disabled:text-slate-500`;
   const labelClass = `block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1`;

@@ -5,6 +5,7 @@ const fs = require('fs');
 const isDev = require('electron-is-dev');
 
 // --- CẤU HÌNH BẢO MẬT & DỮ LIỆU ---
+// Chỉ dùng file JSON này để lưu Mật khẩu Admin (tránh reset khi xóa cache trình duyệt)
 const PASSWORD_SALT = 'DHsystem_Salt_2026_Dexie';
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'app_secure_settings.json');
@@ -29,7 +30,7 @@ function hashPassword(password) {
 
 // --- IPC HANDLERS ---
 
-// 1. Auth Handlers
+// 1. Auth Handlers (GIỮ NGUYÊN: Để bảo mật mật khẩu)
 ipcMain.handle('auth:login', (_, p) => {
   const settings = readSecureSettings();
   let stored = settings['admin_password'];
@@ -53,30 +54,10 @@ ipcMain.handle('auth:changePassword', (_, p) => {
   return true;
 });
 
-// 2. Database/Settings Handlers
-ipcMain.handle('db:getStats', async () => {
-    // Trả về dữ liệu giả lập trạng thái để UI không bị treo
-    return { personnelCount: 0, unitCount: 0, status: 'Connected' };
-});
+// [ĐÃ XÓA] db:getStats, db:saveSetting, db:getSetting 
+// Lý do: Đã chuyển sang dùng Dexie ở Renderer để tránh xung đột dữ liệu.
 
-ipcMain.handle('db:saveSetting', (_, {key, value}) => {
-    try {
-        const settings = readSecureSettings();
-        settings[key] = value;
-        writeSecureSettings(settings);
-        return true;
-    } catch (e) {
-        console.error(e);
-        return false;
-    }
-});
-
-ipcMain.handle('db:getSetting', (_, key) => {
-    const settings = readSecureSettings();
-    return settings[key];
-});
-
-// 3. System Handlers (Update Logic)
+// 2. System Handlers (Update Logic)
 ipcMain.handle('system:updateFromFile', async () => {
   const win = BrowserWindow.getFocusedWindow();
   
@@ -160,7 +141,7 @@ function createWindow() {
 // --- APP LIFECYCLE ---
 app.whenReady().then(() => {
   createWindow();
-  // Giữ UserAgent custom để định danh (nếu cần filter ở server)
+  // Giữ UserAgent custom để định danh
   session.defaultSession.setUserAgent(session.defaultSession.getUserAgent() + ' QNManager/7.0');
 });
 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Shield, Key, UserPlus, Crosshair, Radio, Target, 
-  FileText, AlertTriangle, Lock, LogIn, Cpu, 
-  Database, Server, Activity, ChevronRight, Minimize2
+  Shield, Key, UserPlus, Crosshair, Target, 
+  FileText, AlertTriangle, LogIn, 
+  Database, Server, ChevronRight, Minimize2
 } from 'lucide-react';
 import PersonnelForm from './PersonnelForm';
 import { db } from '../store';
@@ -20,7 +20,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   // State quản lý chế độ khai báo thông tin chiến sĩ
   const [showSoldierForm, setShowSoldierForm] = useState(false);
   const [units, setUnits] = useState<Unit[]>([]);
-  // Giữ lại state để logic không bị lỗi, nhưng không render ra UI nữa
+  // Giữ lại state systemStatus để logic không bị lỗi
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [systemStatus, setSystemStatus] = useState('ONLINE');
 
   // Load danh sách đơn vị để phục vụ form nhập liệu
@@ -50,7 +51,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       await new Promise(resolve => setTimeout(resolve, 800));
 
       if (success) {
-        onLogin();
+        // [FIX QUAN TRỌNG] Kiểm tra onLogin có tồn tại trước khi gọi
+        // Để tránh crash nếu App.tsx truyền sai prop (ví dụ: onLoginSuccess)
+        if (typeof onLogin === 'function') {
+            onLogin();
+        } else {
+            console.error("DEV ERROR: Hàm onLogin chưa được truyền đúng từ App.tsx");
+            setError('Lỗi hệ thống: Không tìm thấy hàm chuyển trang.');
+        }
       } else {
         setError('Mã truy cập không hợp lệ. Vui lòng kiểm tra lại.');
       }
@@ -94,11 +102,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
            {/* Cột trái: Branding & Thông tin (7 cols) */}
            <div className="lg:col-span-7 space-y-12 pl-4 lg:pl-16 relative">
               
-              {/* Đã xóa System Status Badge tại đây */}
-              
               <div className="space-y-6">
                 <div className="relative">
-                    {/* Điều chỉnh kích thước text: lg:text-6xl thay vì 7xl và thêm whitespace-nowrap để không rớt dòng */}
                     <h1 className="text-4xl lg:text-6xl font-black text-white leading-[0.9] tracking-tighter drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)]">
                       <span className="block text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-green-300 to-teal-400">HỆ THỐNG</span>
                       <span className="block whitespace-nowrap">QUẢN LÝ QUÂN NHÂN</span>
@@ -163,7 +168,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                             <Key size={10} className="text-emerald-500"/> Mã truy cập
                           </label>
-                          <div className="relative group">
+                          <div className="relative group z-20">
                               <input 
                                 type="password" 
                                 className="w-full bg-[#030712] border border-slate-700 text-emerald-400 text-center font-mono text-xl tracking-[0.5em] rounded-md px-4 py-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder:text-slate-800 placeholder:tracking-normal placeholder:text-sm group-hover:border-slate-600"
@@ -251,11 +256,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                </div>
             </div>
 
-            {/* Form Container - SỬA LỖI CĂN GIỮA */}
+            {/* Form Container */}
             <div className="flex-1 bg-[#f0f2f5] relative overflow-hidden flex flex-col w-full">
-               {/* Container cuộn chính */}
                <div className="flex-1 overflow-y-auto w-full custom-scrollbar scroll-smooth">
-                   {/* Wrapper căn giữa nội dung */}
                    <div className="min-h-full w-full flex justify-center p-4 md:p-8">
                        <div className="w-full max-w-6xl animate-fade-in pb-10">
                            <PersonnelForm 

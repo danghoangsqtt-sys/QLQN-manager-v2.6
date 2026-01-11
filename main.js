@@ -54,8 +54,6 @@ ipcMain.handle('auth:changePassword', (_, p) => {
 });
 
 // 2. Database/Settings Handlers
-
-// [ĐÃ SỬA LỖI] Khôi phục lại hàm này để tránh lỗi giao diện gọi vào bị crash
 ipcMain.handle('db:getStats', async () => {
     // Trả về dữ liệu giả lập trạng thái để UI không bị treo
     return { personnelCount: 0, unitCount: 0, status: 'Connected' };
@@ -78,7 +76,7 @@ ipcMain.handle('db:getSetting', (_, key) => {
     return settings[key];
 });
 
-// 3. System Handlers (Update Logic đã sửa)
+// 3. System Handlers (Update Logic)
 ipcMain.handle('system:updateFromFile', async () => {
   const win = BrowserWindow.getFocusedWindow();
   
@@ -100,8 +98,7 @@ ipcMain.handle('system:updateFromFile', async () => {
     // Mở file cài đặt và đợi lệnh được gửi đi thành công
     await shell.openPath(installerPath);
     
-    // [ĐÃ SỬA LỖI] Tăng thời gian chờ từ 500ms lên 3000ms (3 giây)
-    // Để đảm bảo tiến trình con (installer) đã nhận lệnh từ OS trước khi App đóng
+    // Đợi 3 giây để đảm bảo tiến trình cài đặt được kích hoạt trước khi đóng app
     setTimeout(() => {
       app.quit();
     }, 3000);
@@ -117,7 +114,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
-    backgroundColor: '#14452F',
+    backgroundColor: '#14452F', // Màu nền mặc định khi load
     show: false,
     icon: path.join(__dirname, 'public/icon.ico'),
     webPreferences: {
@@ -129,12 +126,12 @@ function createWindow() {
     }
   });
 
-  // FIX: Cấu hình CSP chặt chẽ hơn cho Production
+  // FIX: Cấu hình CSP chặt chẽ hơn cho Production nhưng phải hỗ trợ file://
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     // Dev: Cho phép lỏng lẻo để hot-reload hoạt động
     const devCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: http: https:;";
     
-    // Prod: CHẶN 'unsafe-eval' để ngăn chặn XSS tấn công, chỉ cho phép script nội bộ
+    // Prod: Cho phép file: và unsafe-eval (để đảm bảo tương thích với một số thư viện React build cũ)
     const prodCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file: https:;"; 
 
     callback({
@@ -163,7 +160,7 @@ function createWindow() {
 // --- APP LIFECYCLE ---
 app.whenReady().then(() => {
   createWindow();
-  // Giữ UserAgent custom để định danh
+  // Giữ UserAgent custom để định danh (nếu cần filter ở server)
   session.defaultSession.setUserAgent(session.defaultSession.getUserAgent() + ' QNManager/7.0');
 });
 

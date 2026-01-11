@@ -36,7 +36,7 @@ const App: React.FC = () => {
 
   // 1. Nếu chưa đăng nhập -> Hiển thị màn hình LoginScreen
   if (!isAuthenticated) {
-    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+    return <LoginScreen onLogin={handleLoginSuccess} />;
   }
 
   // 2. Nếu đã đăng nhập -> Hiển thị Dashboard (Giao diện chính)

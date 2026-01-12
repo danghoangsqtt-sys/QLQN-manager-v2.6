@@ -94,12 +94,12 @@ class Store {
     );
   }
 
-  // Hàm lấy chi tiết đầy đủ (dùng cho Edit/Print)
+  // Hàm lấy chi tiết đầy đủ (dùng cho Edit/Print) - Giữ nguyên logic
   async getPersonnelById(id: string): Promise<MilitaryPersonnel | undefined> {
     return await dbInstance.personnel.get(id);
   }
 
-  // [ĐÃ SỬA LỖI] Tối ưu hóa hiệu năng, thêm limit
+  // [FIXED] Tối ưu hóa hiệu năng và bảo vệ dữ liệu gốc
   async getPersonnel(filters: Partial<FilterCriteria> = {}): Promise<MilitaryPersonnel[]> {
     let collection = dbInstance.personnel.toCollection();
 
@@ -138,20 +138,21 @@ class Store {
       });
     }
 
-    // [THÊM] Bảo vệ hiệu năng: Nếu không lọc gì cả, giới hạn 200 bản ghi đầu tiên
-    // Giúp tránh treo máy nếu dữ liệu quá lớn
+    // Bảo vệ hiệu năng: Giới hạn số lượng bản ghi nếu không có bộ lọc cụ thể
     if (!filters.keyword && (!filters.unitId || filters.unitId === 'all') && !filters.rank && !filters.security) {
         collection = collection.limit(5000);
     }
 
     const resultArray = await collection.toArray();
     
-    // Chỉ trả về ảnh Thumb cho danh sách để nhẹ RAM
-    const optimizedResult = resultArray.map(p => ({
-        ...p,
-        anh_dai_dien: p.anh_thumb || '', // Dùng ảnh nhỏ để hiển thị list
-        // Nếu không có thumb thì để trống, Dashboard sẽ hiện avatar chữ cái
-    }));
+    // [FIX] Tạo bản sao (Clone) của object để hiển thị.
+    // Điều này ngăn chặn việc UI vô tình ghi đè ảnh gốc bằng ảnh thumb nếu logic Form không chặt chẽ.
+    const optimizedResult = resultArray.map(p => {
+        const safeObj = { ...p };
+        // Dùng ảnh thumb cho danh sách để nhẹ, fallback về rỗng nếu không có
+        safeObj.anh_dai_dien = p.anh_thumb || ''; 
+        return safeObj;
+    });
 
     return optimizedResult.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
@@ -296,24 +297,83 @@ class Store {
     }
   }
 
+  // [FIXED] Hàm khôi phục dữ liệu đã được vá lỗi
+  // 1. Sử dụng Transaction để đảm bảo toàn vẹn dữ liệu
+  // 2. Thêm logic Migrate để chuyển đổi dữ liệu cũ sang cấu trúc mới
   async restoreBackup(jsonData: any): Promise<boolean> {
     try {
         if (!jsonData.data || !Array.isArray(jsonData.data.personnel)) {
+            this.log('ERROR', 'File backup không hợp lệ: Thiếu dữ liệu personnel.');
             return false;
         }
 
-        // FIX: Transaction restore an toàn
+        const rawPersonnel = jsonData.data.personnel;
+
+        // --- BƯỚC 1: MIGRATE DATA (Chuyển đổi dữ liệu cũ) ---
+        // Giúp tránh lỗi "mất thông tin" khi restore file backup từ phiên bản cũ
+        const migratedPersonnel = rawPersonnel.map((p: any) => {
+            // Fix: Mạng xã hội từ Object (cũ) -> Array (mới)
+            let mxh = p.mang_xa_hoi;
+            // Kiểm tra nếu là dữ liệu cũ (facebook là string thay vì array)
+            if (mxh && !Array.isArray(mxh.facebook) && typeof mxh.facebook === 'string') {
+                 mxh = { 
+                    facebook: mxh.facebook ? [mxh.facebook] : [],
+                    zalo: mxh.zalo ? [mxh.zalo] : [],
+                    tiktok: mxh.tiktok ? [mxh.tiktok] : []
+                 };
+            } else if (!mxh) {
+                 mxh = { facebook: [], zalo: [], tiktok: [] };
+            }
+
+            // Fix: Đảm bảo các mảng quan trọng không bị null/undefined
+            const safeArray = (arr: any) => Array.isArray(arr) ? arr : [];
+
+            // Fix: Cấu trúc kinh doanh
+            // Nếu dữ liệu cũ không có kinh_doanh, hoặc cấu trúc sai, ta reset về default
+            const safeKinhDoanh = p.tai_chinh_suc_khoe?.kinh_doanh || { 
+               co_khong: false, hinh_thuc: '', loai_hinh: '', von: '', dia_diem: '', doi_tac: '', sdt_doi_tac: '' 
+            };
+
+            return {
+                ...p,
+                mang_xa_hoi: mxh,
+                tieu_su_ban_than: safeArray(p.tieu_su_ban_than),
+                quan_he_gia_dinh: {
+                    ...p.quan_he_gia_dinh,
+                    cha_me_anh_em: safeArray(p.quan_he_gia_dinh?.cha_me_anh_em),
+                    con: safeArray(p.quan_he_gia_dinh?.con),
+                    nguoi_yeu: safeArray(p.quan_he_gia_dinh?.nguoi_yeu)
+                },
+                lich_su_vi_pham: {
+                    ...p.lich_su_vi_pham,
+                    // Bổ sung các mảng mới thêm vào bản 2.6
+                    ky_luat_quan_doi: safeArray(p.lich_su_vi_pham?.ky_luat_quan_doi),
+                    vi_pham_phap_luat: safeArray(p.lich_su_vi_pham?.vi_pham_phap_luat)
+                },
+                tai_chinh_suc_khoe: {
+                    ...p.tai_chinh_suc_khoe,
+                    kinh_doanh: safeKinhDoanh,
+                    // Bổ sung mảng sức khỏe mới
+                    suc_khoe: p.tai_chinh_suc_khoe?.suc_khoe || { chieu_cao: '', can_nang: '', phan_loai: '', benh_ly: '' }
+                }
+            };
+        });
+
+        // --- BƯỚC 2: THỰC THI TRANSACTION (Giao dịch an toàn) ---
+        // Chỉ xóa dữ liệu cũ khi chắc chắn dữ liệu mới đã sẵn sàng
         await dbInstance.transaction('rw', dbInstance.personnel, dbInstance.units, dbInstance.settings, async () => {
+            // Xóa sạch dữ liệu hiện tại
             await dbInstance.personnel.clear();
             await dbInstance.units.clear();
             await dbInstance.settings.clear();
 
-            if (jsonData.data.personnel.length) await dbInstance.personnel.bulkAdd(jsonData.data.personnel);
+            // Nạp dữ liệu đã qua xử lý (migrated)
+            if (migratedPersonnel.length) await dbInstance.personnel.bulkAdd(migratedPersonnel);
             if (jsonData.data.units.length) await dbInstance.units.bulkAdd(jsonData.data.units);
             if (jsonData.data.settings.length) await dbInstance.settings.bulkAdd(jsonData.data.settings);
         });
         
-        this.log('SYSTEM', `Khôi phục dữ liệu từ bản sao lưu ngày ${new Date(jsonData.timestamp).toLocaleDateString()}`);
+        this.log('SYSTEM', `Khôi phục thành công ${migratedPersonnel.length} hồ sơ từ bản sao lưu.`);
         return true;
     } catch (e) {
         console.error("Restore failed:", e);

@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   changePassword: (p) => ipcRenderer.invoke('auth:changePassword', p),
   
   // System Utils (Logic update phiên bản)
-  updateFromFile: () => ipcRenderer.invoke('system:updateFromFile')
+  updateFromFile: () => ipcRenderer.invoke('system:updateFromFile'),
   
   // Đã xóa getStats, saveSetting, getSetting vì UI sẽ gọi trực tiếp DB Dexie
 });

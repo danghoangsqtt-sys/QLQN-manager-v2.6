@@ -338,10 +338,10 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
             showToast('info', 'XỬ LÝ', 'Đang tạo ảnh thu nhỏ...');
             const thumb = await createThumbnail(base64, 200);
             const optimizedMain = await createThumbnail(base64, 800);
-            setFormData(prev => ({ ...prev, anh_dai_dien: base64, anh_thumb: thumb }));
+            setFormData(prev => ({ ...prev, anh_dai_dien: optimizedMain, anh_thumb: thumb }));
             showToast('success', 'XONG', 'Đã cập nhật ảnh.');
         } catch {
-            setFormData(prev => ({ ...prev, anh_dai_dien: optimizedMain, anh_thumb: thumb  }));
+            setFormData(prev => ({ ...prev, anh_dai_dien: base64, anh_thumb: base64  }));
         }
       };
       reader.readAsDataURL(file);

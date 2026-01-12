@@ -1,4 +1,3 @@
-
 import { db } from '../store';
 import { ShortcutConfig } from '../types'; 
 import { 
@@ -8,7 +7,7 @@ import {
   DownloadCloud, CheckCircle2, Terminal,
   Settings as SettingsIcon, ShieldAlert,
   HardDrive, History, ChevronRight as ChevronRightIcon,
-  X, AlertCircle, Shield, CheckCircle
+  X, AlertCircle, Shield, CheckCircle, Loader2
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 
@@ -25,6 +24,10 @@ const Settings: React.FC = () => {
   const [diagnosticResult, setDiagnosticResult] = useState<any>(null);
   const [appVersion] = useState("7.2.5-STABLE");
   
+  // Trạng thái Loading toàn trang (Dùng cho Backup/Restore)
+  const [isGlobalLoading, setIsGlobalLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("");
+
   // Toasts & Modals State
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [modal, setModal] = useState<{
@@ -104,60 +107,107 @@ const Settings: React.FC = () => {
   };
 
   const handleBackup = async () => {
+    setIsGlobalLoading(true);
+    setLoadingMessage("Đang đóng gói dữ liệu backup...");
     try {
-        const jsonString = await db.createBackup();
-        if (!jsonString) {
-          addToast("Lỗi trích xuất dữ liệu sao lưu", "error");
-          return;
-        }
-        const date = new Date();
-        const fileName = `QNManager_Backup_${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2,'0')}-${date.getDate().toString().padStart(2,'0')}.json`;
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        addToast("Đã tạo file sao lưu thành công", "success");
+        // Delay nhẹ để UI kịp render loading
+        setTimeout(async () => {
+            try {
+                const jsonString = await db.createBackup();
+                if (!jsonString) {
+                  throw new Error("Dữ liệu rỗng");
+                }
+                const date = new Date();
+                const fileName = `QNManager_Backup_${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2,'0')}-${date.getDate().toString().padStart(2,'0')}.json`;
+                const blob = new Blob([jsonString], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                addToast("Đã tạo file sao lưu thành công", "success");
+            } catch (innerError) {
+                addToast("Lỗi trích xuất dữ liệu: " + innerError, "error");
+            } finally {
+                setIsGlobalLoading(false);
+            }
+        }, 500);
     } catch (e) {
-        addToast("Lỗi trong quá trình sao lưu", "error");
+        setIsGlobalLoading(false);
+        addToast("Lỗi không xác định khi sao lưu", "error");
     }
   };
 
   const handleRestore = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    // Reset input value để cho phép chọn lại cùng 1 file nếu cần
+    event.target.value = '';
+
     const reader = new FileReader();
+    
+    // UI Loading khi đang đọc file
+    setIsGlobalLoading(true);
+    setLoadingMessage("Đang đọc và phân tích tập tin...");
+
     reader.onload = async (e) => {
         try {
             const content = e.target?.result as string;
-            const data = JSON.parse(content);
             
+            // Validate JSON
+            let data;
+            try {
+                data = JSON.parse(content);
+            } catch (jsonError) {
+                throw new Error("File không đúng định dạng JSON hoặc bị hỏng.");
+            }
+
+            // Validate cấu trúc cơ bản của Backup
+            if (!data || !data.data || !data.timestamp) {
+                throw new Error("Cấu trúc file backup không hợp lệ.");
+            }
+            
+            setIsGlobalLoading(false); // Tắt loading đọc file để hiện modal xác nhận
+
             setModal({
               isOpen: true,
               type: 'warning',
               title: 'Xác nhận khôi phục dữ liệu',
-              message: `Hệ thống tìm thấy bản sao lưu ngày ${new Date(data.timestamp).toLocaleString()}. Hành động này sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại. Bạn có chắc chắn?`,
-              confirmText: 'Bắt đầu khôi phục',
+              message: `Hệ thống tìm thấy bản sao lưu ngày ${new Date(data.timestamp).toLocaleString()}. \n\nLƯU Ý QUAN TRỌNG: Hành động này sẽ TỰ ĐỘNG CHUYỂN ĐỔI dữ liệu cũ sang cấu trúc mới và GHI ĐÈ toàn bộ dữ liệu hiện tại.`,
+              confirmText: 'Đồng ý & Bắt đầu',
               onConfirm: async () => {
-                const success = await db.restoreBackup(data);
-                if (success) {
-                  addToast("Khôi phục thành công. Hệ thống đang tải lại...", "success");
-                  setTimeout(() => window.location.reload(), 1500);
-                } else {
-                  addToast("File sao lưu không hợp lệ", "error");
-                }
+                setIsGlobalLoading(true);
+                setLoadingMessage("Đang khôi phục và đồng bộ dữ liệu...");
+                
+                // Delay để UI render loading
+                setTimeout(async () => {
+                    const success = await db.restoreBackup(data);
+                    setIsGlobalLoading(false);
+                    if (success) {
+                      addToast("Khôi phục thành công! Đang khởi động lại...", "success");
+                      setTimeout(() => window.location.reload(), 2000);
+                    } else {
+                      addToast("File sao lưu không hợp lệ hoặc lỗi phiên bản", "error");
+                    }
+                }, 500);
               }
             });
-        } catch (error) {
-            addToast("Định dạng file không được hỗ trợ", "error");
+        } catch (error: any) {
+            setIsGlobalLoading(false);
+            addToast(error.message || "Định dạng file không được hỗ trợ", "error");
         }
     };
+    
+    reader.onerror = () => {
+        setIsGlobalLoading(false);
+        addToast("Không thể đọc file này", "error");
+    };
+
     reader.readAsText(file);
-    event.target.value = '';
   };
 
   const triggerUpdate = async () => {
@@ -179,6 +229,19 @@ const Settings: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto animate-fade-in pb-20 space-y-6 text-slate-700 relative">
       
+      {/* --- GLOBAL LOADING OVERLAY --- */}
+      {isGlobalLoading && (
+        <div className="fixed inset-0 z-[1300] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center animate-fade-in">
+            <div className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-4 max-w-sm text-center">
+                <Loader2 size={48} className="text-[#14452F] animate-spin" />
+                <div>
+                    <h3 className="text-lg font-black text-slate-800 uppercase">Vui lòng chờ</h3>
+                    <p className="text-sm font-medium text-slate-500 mt-1">{loadingMessage}</p>
+                </div>
+            </div>
+        </div>
+      )}
+
       {/* --- TOAST SYSTEM --- */}
       <div className="fixed top-6 right-6 z-[1100] flex flex-col gap-3 pointer-events-none">
         {toasts.map(t => (
@@ -219,7 +282,7 @@ const Settings: React.FC = () => {
                 {modal.type === 'danger' ? <Trash2 size={40} /> : <AlertTriangle size={40} />}
               </div>
               <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight mb-2">{modal.title}</h3>
-              <p className="text-sm text-slate-500 font-medium leading-relaxed mb-8">{modal.message}</p>
+              <p className="text-sm text-slate-500 font-medium leading-relaxed mb-8 whitespace-pre-wrap">{modal.message}</p>
               <div className="flex gap-4">
                 <button 
                   onClick={() => setModal(null)} 
@@ -406,7 +469,11 @@ const Settings: React.FC = () => {
                 <HardDrive size={16} /> Quản trị dữ liệu
              </h3>
              <div className="space-y-2 relative z-10">
-                <button onClick={handleBackup} className="w-full flex items-center justify-between p-3 bg-blue-50/50 border border-blue-100 rounded-xl hover:bg-blue-100 transition-all group">
+                <button 
+                    onClick={handleBackup} 
+                    disabled={isGlobalLoading}
+                    className="w-full flex items-center justify-between p-3 bg-blue-50/50 border border-blue-100 rounded-xl hover:bg-blue-100 transition-all group disabled:opacity-50"
+                >
                    <div className="flex items-center gap-3">
                       <FileDown size={18} className="text-blue-600"/>
                       <div className="text-left">
@@ -419,7 +486,8 @@ const Settings: React.FC = () => {
 
                 <button 
                    onClick={() => fileInputRef.current?.click()} 
-                   className="w-full flex items-center justify-between p-3 bg-green-50/50 border border-green-100 rounded-xl hover:bg-green-100 transition-all group"
+                   disabled={isGlobalLoading}
+                   className="w-full flex items-center justify-between p-3 bg-green-50/50 border border-green-100 rounded-xl hover:bg-green-100 transition-all group disabled:opacity-50"
                 >
                    <div className="flex items-center gap-3">
                       <Database size={18} className="text-green-600"/>
@@ -437,7 +505,7 @@ const Settings: React.FC = () => {
                        isOpen: true,
                        type: 'danger',
                        title: 'CẢNH BÁO NGUY HIỂM',
-                       message: 'Bạn có chắc chắn muốn XÓA SẠCH toàn bộ dữ liệu hệ thống (nhân sự, đơn vị, nhật ký)? Thao tác này không thể khôi phục.',
+                       message: 'Bạn có chắc chắn muốn XÓA SẠCH toàn bộ dữ liệu hệ thống (nhân sự, đơn vị, nhật ký)? \n\nThao tác này KHÔNG THỂ KHÔI PHỤC nếu bạn chưa sao lưu.',
                        confirmText: 'Xác nhận xóa sạch',
                        onConfirm: async () => {
                          await db.clearDatabase();
@@ -446,7 +514,8 @@ const Settings: React.FC = () => {
                        }
                      });
                    }}
-                   className="w-full flex items-center justify-between p-3 bg-red-50/50 border border-red-100 rounded-xl hover:bg-red-100 transition-all group mt-4"
+                   disabled={isGlobalLoading}
+                   className="w-full flex items-center justify-between p-3 bg-red-50/50 border border-red-100 rounded-xl hover:bg-red-100 transition-all group mt-4 disabled:opacity-50"
                 >
                    <div className="flex items-center gap-3">
                       <Trash2 size={18} className="text-red-600"/>

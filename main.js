@@ -32,11 +32,6 @@ ipcMain.handle('auth:login', (_, p) => {
   const settings = readSecureSettings();
   let stored = settings['admin_password'];
   
-  // Nếu mất file config -> Không cho login bằng 123456 ngay
-  // Mà bắt buộc phải nhập đúng mật khẩu cũ (nếu bạn có cơ chế backup) 
-  // Hoặc chấp nhận rủi ro này nếu ưu tiên tính tiện dụng.
-  
-  // Ít nhất, hãy đổi password mặc định khó đoán hơn
   const DEFAULT_PASS = 'Admin@123'; 
   
   if (!stored) {
@@ -91,19 +86,22 @@ ipcMain.handle('system:updateFromFile', async () => {
 
 // --- WINDOW MANAGEMENT ---
 function createWindow() {
+  // KHẮC PHỤC: Đưa logic iconPath ra ngoài object config
+  const iconPath = isDev 
+    ? path.join(__dirname, 'public/icon.ico') 
+    : path.join(process.resourcesPath, 'public', 'icon.ico');
+
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
     backgroundColor: '#14452F',
-    show: false, // Ẩn lúc mới tạo để tránh nháy trắng
-    const iconPath = isDev 
-  ? path.join(__dirname, 'public/icon.ico') 
-  : path.join(process.resourcesPath, 'public', 'icon.ico'); // Icon ứng dụng
+    show: false,
+    icon: iconPath, // KHẮC PHỤC: Gán giá trị icon ở đây
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false, // Tắt sandbox để dùng fs trong preload nếu cần (hoặc cấu hình chặt hơn)
+      sandbox: false,
       webSecurity: true,
     }
   });
@@ -114,7 +112,6 @@ function createWindow() {
     const devCSP = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: http: https:;";
     
     // Prod: CHẶN 'unsafe-eval' và các kết nối ra ngoài (chỉ cho phép file://, data:, blob:)
-    // Lưu ý: Đã bỏ 'unsafe-eval' vì chúng ta build bằng Vite (đã biên dịch)
     const prodCSP = "default-src 'self' 'unsafe-inline' data: blob: file:;"; 
 
     callback({

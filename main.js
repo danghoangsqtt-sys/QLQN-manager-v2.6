@@ -96,7 +96,9 @@ function createWindow() {
     height: 900,
     backgroundColor: '#14452F',
     show: false, // Ẩn lúc mới tạo để tránh nháy trắng
-    icon: path.join(__dirname, 'public/icon.ico'), // Icon ứng dụng
+    const iconPath = isDev 
+  ? path.join(__dirname, 'public/icon.ico') 
+  : path.join(process.resourcesPath, 'public', 'icon.ico'); // Icon ứng dụng
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

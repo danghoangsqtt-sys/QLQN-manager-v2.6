@@ -41,7 +41,6 @@ const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
   hoan_canh_song: { song_chung_voi: 'Bố mẹ đẻ', chi_tiet_nguoi_nuoi_duong: null, ly_do_khong_song_cung_bo_me: '' },
   quan_he_gia_dinh: { 
       cha_me_anh_em: [], 
-      // @ts-ignore
       vo: { ho_ten: '', nam_sinh: '', sdt: '', nghe_nghiep: '', noi_o: '' }, 
       con: [], 
       nguoi_yeu: [] 
@@ -199,58 +198,122 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // --- KHỞI TẠO STATE AN TOÀN ---
+  // --- KHỞI TẠO STATE AN TOÀN ---
   const [formData, setFormData] = useState<Partial<MilitaryPersonnel>>(() => {
+    // 1. Luôn bắt đầu từ bản sao chuẩn của dữ liệu mặc định
+    // JSON.parse(JSON.stringify) giúp deep clone, ngắt tham chiếu
+    const finalData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+
+    // Nếu không có dữ liệu đầu vào (chế độ thêm mới), trả về mặc định ngay
+    if (!initialData) return finalData;
+
     try {
-        const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_DATA));
-        if (!initialData) return defaultCopy;
-        
-        const merged = { ...defaultCopy, ...initialData };
-        // Deep merge thủ công để tránh mất dữ liệu nested
-        merged.quan_he_gia_dinh = { ...defaultCopy.quan_he_gia_dinh, ...initialData.quan_he_gia_dinh };
-        // @ts-ignore
-        merged.quan_he_gia_dinh.vo = { ...defaultCopy.quan_he_gia_dinh?.vo, ...(initialData.quan_he_gia_dinh as any)?.vo || {} };
-        merged.thong_tin_gia_dinh_chung = { ...defaultCopy.thong_tin_gia_dinh_chung, ...initialData.thong_tin_gia_dinh_chung };
-        merged.thong_tin_gia_dinh_chung.lich_su_vi_pham_nguoi_than = { ...defaultCopy.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than, ...(initialData.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than || {}) };
-        merged.tai_chinh_suc_khoe = { ...defaultCopy.tai_chinh_suc_khoe, ...initialData.tai_chinh_suc_khoe };
-        merged.lich_su_vi_pham = { ...defaultCopy.lich_su_vi_pham, ...initialData.lich_su_vi_pham };
-        merged.yeu_to_nuoc_ngoai = { ...defaultCopy.yeu_to_nuoc_ngoai, ...initialData.yeu_to_nuoc_ngoai };
-        merged.mang_xa_hoi = { ...defaultCopy.mang_xa_hoi, ...initialData.mang_xa_hoi };
-        merged.custom_data = { ...defaultCopy.custom_data, ...initialData.custom_data };
-        
-        // Khởi tạo mảng
-        if (!merged.tieu_su_ban_than) merged.tieu_su_ban_than = [];
-        if (!merged.yeu_to_nuoc_ngoai.than_nhan) merged.yeu_to_nuoc_ngoai.than_nhan = [];
-        if (!merged.yeu_to_nuoc_ngoai.di_nuoc_ngoai) merged.yeu_to_nuoc_ngoai.di_nuoc_ngoai = [];
-        if (!merged.mang_xa_hoi.facebook) merged.mang_xa_hoi.facebook = [];
-        if (!merged.quan_he_gia_dinh.cha_me_anh_em) merged.quan_he_gia_dinh.cha_me_anh_em = [];
-        if (!merged.quan_he_gia_dinh.nguoi_yeu) merged.quan_he_gia_dinh.nguoi_yeu = [];
-        // @ts-ignore
-        if (!merged.lich_su_vi_pham.ky_luat_quan_doi) merged.lich_su_vi_pham.ky_luat_quan_doi = [];
-        // @ts-ignore
-        if (!merged.lich_su_vi_pham.vi_pham_phap_luat) merged.lich_su_vi_pham.vi_pham_phap_luat = [];
-        // @ts-ignore
-        if (!merged.tai_chinh_suc_khoe.kinh_doanh) merged.tai_chinh_suc_khoe.kinh_doanh = { ...defaultCopy.tai_chinh_suc_khoe?.kinh_doanh };
-        // @ts-ignore
-        if (!merged.tai_chinh_suc_khoe.suc_khoe) merged.tai_chinh_suc_khoe.suc_khoe = { ...defaultCopy.tai_chinh_suc_khoe?.suc_khoe };
+      // 2. Merge cấp 1: Ghi đè các trường cơ bản (ho_ten, cccd,...)
+      // Lưu ý: Việc này sẽ ghi đè cả các object con bằng tham chiếu của initialData
+      // nên ta cần bước 3 để khôi phục cấu trúc mặc định cho các object con.
+      const mergedBase = { ...finalData, ...initialData };
 
-        // Logic check người yêu/vợ
-        // @ts-ignore
-        if (!merged.custom_data?.tinh_trang_hon_nhan) {
-            // @ts-ignore
-            const hasWife = !!(merged.quan_he_gia_dinh?.vo?.ho_ten);
-            // @ts-ignore
-            merged.custom_data = { ...merged.custom_data, tinh_trang_hon_nhan: hasWife ? 'ket_hon' : 'doc_than' };
+      // 3. Hàm helper để merge object con an toàn (giữ lại default keys)
+      // Giúp tránh lỗi mất field nếu initialData trả về object thiếu field
+      const safeMergeSection = (sectionKey: keyof MilitaryPersonnel) => {
+        if (initialData[sectionKey] && typeof initialData[sectionKey] === 'object') {
+          mergedBase[sectionKey] = {
+            ...DEFAULT_DATA[sectionKey],      // Lấy gốc mặc định
+            ...(mergedBase[sectionKey] || {}) // Ghi đè bằng dữ liệu mới
+          };
         }
-        // @ts-ignore
-        if (merged.custom_data?.co_nguoi_yeu === undefined) {
-            const hasLover = (merged.quan_he_gia_dinh?.nguoi_yeu?.length || 0) > 0;
-            // @ts-ignore
-            merged.custom_data = { ...merged.custom_data, co_nguoi_yeu: hasLover };
-        }
+      };
 
-        return merged;
+      // Áp dụng merge an toàn cho các nhóm dữ liệu lớn
+      safeMergeSection('quan_he_gia_dinh');
+      safeMergeSection('thong_tin_gia_dinh_chung');
+      safeMergeSection('tai_chinh_suc_khoe');
+      safeMergeSection('lich_su_vi_pham');
+      safeMergeSection('yeu_to_nuoc_ngoai');
+      safeMergeSection('mang_xa_hoi');
+      safeMergeSection('custom_data');
+
+      // 4. Xử lý chuyên sâu cho các Object lồng nhau cấp 3 (Nested Level 3)
+      // Vấn đề: "vo", "kinh_doanh" thường bị null đè lên object rỗng mặc định
+      
+      // -> Xử lý Vợ
+      if (mergedBase.quan_he_gia_dinh) {
+        mergedBase.quan_he_gia_dinh.vo = {
+          // @ts-ignore: DEFAULT_DATA.quan_he_gia_dinh.vo đảm bảo có cấu trúc
+          ...DEFAULT_DATA.quan_he_gia_dinh?.vo, 
+          ...(initialData.quan_he_gia_dinh?.vo || {}) 
+        };
+      }
+
+      // -> Xử lý Vi phạm người thân
+      if (mergedBase.thong_tin_gia_dinh_chung) {
+        mergedBase.thong_tin_gia_dinh_chung.lich_su_vi_pham_nguoi_than = {
+           // @ts-ignore
+           ...DEFAULT_DATA.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than,
+           ...(initialData.thong_tin_gia_dinh_chung?.lich_su_vi_pham_nguoi_than || {})
+        };
+      }
+
+      // -> Xử lý Kinh doanh & Sức khỏe
+      if (mergedBase.tai_chinh_suc_khoe) {
+        mergedBase.tai_chinh_suc_khoe.kinh_doanh = {
+            // @ts-ignore
+            ...DEFAULT_DATA.tai_chinh_suc_khoe?.kinh_doanh,
+            ...(initialData.tai_chinh_suc_khoe?.kinh_doanh || {})
+        };
+        mergedBase.tai_chinh_suc_khoe.suc_khoe = {
+            // @ts-ignore
+            ...DEFAULT_DATA.tai_chinh_suc_khoe?.suc_khoe,
+            ...(initialData.tai_chinh_suc_khoe?.suc_khoe || {})
+        };
+      }
+
+      // 5. Đảm bảo Mảng (Array) không bao giờ là null/undefined
+      // Nếu null, gán về mảng rỗng []
+      if (!mergedBase.tieu_su_ban_than) mergedBase.tieu_su_ban_than = [];
+      
+      // Mạng xã hội
+      if (!mergedBase.mang_xa_hoi) mergedBase.mang_xa_hoi = { facebook: [], zalo: [], tiktok: [] };
+      if (!mergedBase.mang_xa_hoi.facebook) mergedBase.mang_xa_hoi.facebook = [];
+      if (!mergedBase.mang_xa_hoi.zalo) mergedBase.mang_xa_hoi.zalo = [];
+      if (!mergedBase.mang_xa_hoi.tiktok) mergedBase.mang_xa_hoi.tiktok = [];
+
+      // Quan hệ & Nước ngoài
+      if (!mergedBase.yeu_to_nuoc_ngoai.than_nhan) mergedBase.yeu_to_nuoc_ngoai.than_nhan = [];
+      if (!mergedBase.yeu_to_nuoc_ngoai.di_nuoc_ngoai) mergedBase.yeu_to_nuoc_ngoai.di_nuoc_ngoai = [];
+      if (!mergedBase.quan_he_gia_dinh.cha_me_anh_em) mergedBase.quan_he_gia_dinh.cha_me_anh_em = [];
+      if (!mergedBase.quan_he_gia_dinh.con) mergedBase.quan_he_gia_dinh.con = [];
+      if (!mergedBase.quan_he_gia_dinh.nguoi_yeu) mergedBase.quan_he_gia_dinh.nguoi_yeu = [];
+
+      // Vi phạm
+      if (!mergedBase.lich_su_vi_pham.ky_luat_quan_doi) mergedBase.lich_su_vi_pham.ky_luat_quan_doi = [];
+      if (!mergedBase.lich_su_vi_pham.vi_pham_phap_luat) mergedBase.lich_su_vi_pham.vi_pham_phap_luat = [];
+
+      // 6. Logic tính toán dữ liệu Custom (Derived State)
+      // Tự động suy luận tình trạng hôn nhân nếu chưa có
+      if (!mergedBase.custom_data?.tinh_trang_hon_nhan) {
+          // @ts-ignore
+          const hasWife = !!(mergedBase.quan_he_gia_dinh?.vo?.ho_ten);
+          mergedBase.custom_data = { 
+            ...mergedBase.custom_data, 
+            tinh_trang_hon_nhan: hasWife ? 'ket_hon' : 'doc_than' 
+          };
+      }
+      
+      // Tự động suy luận tình trạng người yêu
+      if (mergedBase.custom_data?.co_nguoi_yeu === undefined) {
+          const hasLover = (mergedBase.quan_he_gia_dinh?.nguoi_yeu?.length || 0) > 0;
+          mergedBase.custom_data = { 
+            ...mergedBase.custom_data, 
+            co_nguoi_yeu: hasLover 
+          };
+      }
+
+      return mergedBase;
     } catch (e) {
-        return JSON.parse(JSON.stringify(DEFAULT_DATA));
+      console.error("Lỗi khởi tạo Form:", e);
+      // Fallback an toàn tuyệt đối
+      return JSON.parse(JSON.stringify(DEFAULT_DATA));
     }
   });
 
@@ -278,34 +341,39 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
             setFormData(prev => ({ ...prev, anh_dai_dien: base64, anh_thumb: thumb }));
             showToast('success', 'XONG', 'Đã cập nhật ảnh.');
         } catch {
-            setFormData(prev => ({ ...prev, anh_dai_dien: base64 }));
+            setFormData(prev => ({ ...prev, anh_dai_dien: optimizedMain, anh_thumb: thumb  }));
         }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const updateNested = (path: string, value: any) => {
+const updateNested = (path: string, value: any) => {
   if (isViewMode) return;
   
   setFormData(prev => {
-    // SỬA: Dùng Shallow Copy đệ quy thay vì JSON.parse/stringify
-    // Hoặc đơn giản hơn với Spread operator cho các trường hợp cụ thể
-    
-    // Cách fix nhanh nhất mà vẫn an toàn (nhưng vẫn còn chậm với JSON):
-    // Tốt nhất là tách logic ảnh ra khỏi logic text, nhưng để fix nhanh:
-    
-    const newState = { ...prev }; // Shallow copy cấp 1
+    // Deep clone an toàn bằng JSON (hoặc dùng thư viện lodash/cloneDeep nếu có)
+    const newState = JSON.parse(JSON.stringify(prev));
     const keys = path.split('.');
     
-    // Logic cập nhật an toàn hơn
     let current: any = newState;
     for (let i = 0; i < keys.length - 1; i++) {
         const key = keys[i];
-        // Tạo copy cho level tiếp theo để đảm bảo tính immutability (cơ bản)
-        current[key] = { ...current[key] }; 
+        
+        // Nếu key không tồn tại hoặc null, khởi tạo object mới để tránh crash
+        if (!current[key]) {
+            // Kiểm tra xem key tiếp theo là số (index mảng) hay chữ (key object)
+            const nextKey = keys[i + 1];
+            if (!isNaN(Number(nextKey))) {
+                current[key] = [];
+            } else {
+                current[key] = {};
+            }
+        }
         current = current[key];
     }
+    
+    // Gán giá trị cuối cùng
     current[keys[keys.length - 1]] = value;
     
     return newState;

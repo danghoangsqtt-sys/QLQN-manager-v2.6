@@ -61,6 +61,8 @@ export const exportPersonnelToCSV = (personnelList: MilitaryPersonnel[], fileNam
   let tableContent = `
     <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
     <head>
+        <meta name="ProgId" content="Excel.Sheet"> 
+        <meta name="Generator" content="Microsoft Excel 15">
         <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8"/>
         <style>
             body { font-family: 'Times New Roman', serif; font-size: 11pt; }

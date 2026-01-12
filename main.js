@@ -87,9 +87,9 @@ ipcMain.handle('system:updateFromFile', async () => {
 // --- WINDOW MANAGEMENT ---
 function createWindow() {
   // KHẮC PHỤC: Đưa logic iconPath ra ngoài object config
-  const iconPath = isDev 
-    ? path.join(__dirname, 'public/icon.ico') 
-    : path.join(process.resourcesPath, 'public', 'icon.ico');
+const iconPath = isDev 
+  ? path.join(__dirname, 'public/icon.ico') 
+  : path.join(__dirname, 'dist', 'icon.ico');
 
   const win = new BrowserWindow({
     width: 1400,

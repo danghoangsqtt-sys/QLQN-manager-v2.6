@@ -32,10 +32,16 @@ ipcMain.handle('auth:login', (_, p) => {
   const settings = readSecureSettings();
   let stored = settings['admin_password'];
   
-  // Nếu chưa có mật khẩu (lần đầu chạy), mặc định là 123456
+  // Nếu mất file config -> Không cho login bằng 123456 ngay
+  // Mà bắt buộc phải nhập đúng mật khẩu cũ (nếu bạn có cơ chế backup) 
+  // Hoặc chấp nhận rủi ro này nếu ưu tiên tính tiện dụng.
+  
+  // Ít nhất, hãy đổi password mặc định khó đoán hơn
+  const DEFAULT_PASS = 'Admin@123'; 
+  
   if (!stored) {
-      if (p === '123456') {
-          settings['admin_password'] = hashPassword('123456');
+      if (p === DEFAULT_PASS) {
+          settings['admin_password'] = hashPassword(DEFAULT_PASS);
           writeSecureSettings(settings);
           return true;
       }

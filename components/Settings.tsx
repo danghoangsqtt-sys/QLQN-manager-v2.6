@@ -8,9 +8,13 @@ import {
   DownloadCloud, CheckCircle2, Terminal,
   Settings as SettingsIcon, ShieldAlert,
   HardDrive, History, ChevronRight as ChevronRightIcon,
-  X, AlertCircle
+  X, AlertCircle, Shield, CheckCircle
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
+
+// Định nghĩa kiểu cho Toast và Modal
+type ToastType = 'success' | 'error' | 'warning' | 'info';
+interface Toast { id: string; type: ToastType; message: string; }
 
 const Settings: React.FC = () => {
   const [passwords, setPasswords] = useState({ next: '', confirm: '' });
@@ -21,11 +25,20 @@ const Settings: React.FC = () => {
   const [diagnosticResult, setDiagnosticResult] = useState<any>(null);
   const [appVersion] = useState("7.2.5-STABLE");
   
-  // States for Update Modal
+  // Toasts & Modals State
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [modal, setModal] = useState<{
+    isOpen: boolean;
+    type: 'danger' | 'warning' | 'info';
+    title: string;
+    message: string;
+    confirmText: string;
+    onConfirm: () => void;
+  } | null>(null);
+
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   
-  // Ref cho input file ẩn
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -36,14 +49,26 @@ const Settings: React.FC = () => {
     fetchShortcuts();
   }, []);
 
+  const addToast = (message: string, type: ToastType = 'success') => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+  };
+
   const handleUpdatePassword = async () => {
-    if (!passwords.next || passwords.next !== passwords.confirm) {
-      alert('Mật khẩu không khớp hoặc đang trống!');
+    if (!passwords.next) {
+      addToast('Mật khẩu không được để trống', 'error');
+      return;
+    }
+    if (passwords.next !== passwords.confirm) {
+      addToast('Mật khẩu xác nhận không khớp', 'error');
       return;
     }
     const success = await db.changePassword(passwords.next);
     if (success) {
-        alert('Đổi mật khẩu thành công!');
+        addToast('Thay đổi mật khẩu quản trị thành công', 'success');
         setPasswords({ next: '', confirm: '' });
     }
   };
@@ -60,6 +85,7 @@ const Settings: React.FC = () => {
         records: stats.personnelCount
       });
       setIsDiagnosticRunning(false);
+      addToast('Hoàn tất chẩn đoán hệ thống', 'info');
     }, 1200);
   };
 
@@ -71,6 +97,7 @@ const Settings: React.FC = () => {
       await db.updateShortcut(id, { key: e.key, altKey: e.altKey, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey });
       setShortcuts(await db.getShortcuts());
       setRecordingId(null);
+      addToast('Đã cập nhật phím tắt mới', 'success');
       window.removeEventListener('keydown', handleKey);
     };
     window.addEventListener('keydown', handleKey);
@@ -80,7 +107,7 @@ const Settings: React.FC = () => {
     try {
         const jsonString = await db.createBackup();
         if (!jsonString) {
-          alert("Có lỗi khi trích xuất dữ liệu, vui lòng thử lại!");
+          addToast("Lỗi trích xuất dữ liệu sao lưu", "error");
           return;
         }
         const date = new Date();
@@ -94,9 +121,9 @@ const Settings: React.FC = () => {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
+        addToast("Đã tạo file sao lưu thành công", "success");
     } catch (e) {
-        console.error(e);
-        alert("Lỗi sao lưu: " + e);
+        addToast("Lỗi trong quá trình sao lưu", "error");
     }
   };
 
@@ -108,17 +135,25 @@ const Settings: React.FC = () => {
         try {
             const content = e.target?.result as string;
             const data = JSON.parse(content);
-            if (confirm(`CẢNH BÁO: Tìm thấy bản sao lưu ngày ${new Date(data.timestamp).toLocaleString()}.\n\nThao tác này sẽ XÓA TOÀN BỘ dữ liệu hiện tại và thay thế bằng dữ liệu trong file backup.\n\nBạn có chắc chắn muốn tiếp tục?`)) {
+            
+            setModal({
+              isOpen: true,
+              type: 'warning',
+              title: 'Xác nhận khôi phục dữ liệu',
+              message: `Hệ thống tìm thấy bản sao lưu ngày ${new Date(data.timestamp).toLocaleString()}. Hành động này sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại. Bạn có chắc chắn?`,
+              confirmText: 'Bắt đầu khôi phục',
+              onConfirm: async () => {
                 const success = await db.restoreBackup(data);
                 if (success) {
-                    alert("Khôi phục dữ liệu thành công! Ứng dụng sẽ tải lại.");
-                    window.location.reload();
+                  addToast("Khôi phục thành công. Hệ thống đang tải lại...", "success");
+                  setTimeout(() => window.location.reload(), 1500);
                 } else {
-                    alert("File backup không đúng định dạng hoặc bị hỏng.");
+                  addToast("File sao lưu không hợp lệ", "error");
                 }
-            }
+              }
+            });
         } catch (error) {
-            alert("File không hợp lệ!");
+            addToast("Định dạng file không được hỗ trợ", "error");
         }
     };
     reader.readAsText(file);
@@ -131,10 +166,10 @@ const Settings: React.FC = () => {
         // @ts-ignore
         const result = await window.electronAPI.updateFromFile();
         if (!result.success && result.message !== 'Đã hủy chọn file.') {
-            alert("Lỗi: " + result.message);
+            addToast(result.message, "error");
         }
     } catch (error) {
-        console.error(error);
+        addToast("Lỗi cập nhật phiên bản", "error");
     } finally {
         setIsUpdating(false);
         setShowUpdateModal(false);
@@ -142,8 +177,70 @@ const Settings: React.FC = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in pb-20 space-y-6 text-slate-700">
+    <div className="max-w-6xl mx-auto animate-fade-in pb-20 space-y-6 text-slate-700 relative">
       
+      {/* --- TOAST SYSTEM --- */}
+      <div className="fixed top-6 right-6 z-[1100] flex flex-col gap-3 pointer-events-none">
+        {toasts.map(t => (
+          <div key={t.id} className={`pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl border-l-4 animate-slide-left min-w-[320px] bg-white ${
+            t.type === 'success' ? 'border-green-600 text-green-800' :
+            t.type === 'error' ? 'border-red-600 text-red-800' :
+            t.type === 'warning' ? 'border-amber-600 text-amber-800' :
+            'border-blue-600 text-blue-800'
+          }`}>
+             <div className={`p-2 rounded-full ${
+               t.type === 'success' ? 'bg-green-50' :
+               t.type === 'error' ? 'bg-red-50' :
+               t.type === 'warning' ? 'bg-amber-50' : 'bg-blue-50'
+             }`}>
+                {t.type === 'success' && <CheckCircle size={18}/>}
+                {t.type === 'error' && <AlertTriangle size={18}/>}
+                {t.type === 'warning' && <AlertCircle size={18}/>}
+                {t.type === 'info' && <Info size={18}/>}
+             </div>
+             <div className="flex-1">
+                <p className="text-[10px] font-black uppercase opacity-50">{t.type === 'error' ? 'Hệ thống báo lỗi' : 'Thông báo hệ thống'}</p>
+                <p className="text-xs font-bold leading-tight">{t.message}</p>
+             </div>
+             <button onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))} className="text-slate-300 hover:text-slate-500 transition-colors"><X size={16}/></button>
+          </div>
+        ))}
+      </div>
+
+      {/* --- STRATEGIC CONFIRMATION MODAL --- */}
+      {modal?.isOpen && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fade-in no-print">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-200 animate-slide-up">
+            <div className="p-8 text-center">
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner ${
+                modal.type === 'danger' ? 'bg-red-50 text-red-500' :
+                modal.type === 'warning' ? 'bg-amber-50 text-amber-500' : 'bg-blue-50 text-blue-500'
+              }`}>
+                {modal.type === 'danger' ? <Trash2 size={40} /> : <AlertTriangle size={40} />}
+              </div>
+              <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight mb-2">{modal.title}</h3>
+              <p className="text-sm text-slate-500 font-medium leading-relaxed mb-8">{modal.message}</p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setModal(null)} 
+                  className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all"
+                >
+                  Hủy bỏ
+                </button>
+                <button 
+                  onClick={() => { modal.onConfirm(); setModal(null); }}
+                  className={`flex-1 py-4 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl transition-all active:scale-95 ${
+                    modal.type === 'danger' ? 'bg-red-600 hover:bg-red-700 shadow-red-100' : 'bg-[#14452F] hover:bg-green-800 shadow-green-100'
+                  }`}
+                >
+                  {modal.confirmText}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -175,7 +272,19 @@ const Settings: React.FC = () => {
                 <h3 className="text-xs font-black uppercase flex items-center gap-2">
                    <Keyboard size={16} className="text-blue-600"/> Phím tắt vận hành nhanh
                 </h3>
-                <button onClick={() => db.resetShortcuts().then(() => db.getShortcuts().then(setShortcuts))} className="text-[9px] font-bold text-slate-400 hover:text-red-500 uppercase flex items-center gap-1 transition-colors">
+                <button 
+                  onClick={() => {
+                    setModal({
+                      isOpen: true,
+                      type: 'info',
+                      title: 'Reset phím tắt',
+                      message: 'Khôi phục toàn bộ phím tắt về cài đặt gốc của hệ thống?',
+                      confirmText: 'Xác nhận Reset',
+                      onConfirm: () => db.resetShortcuts().then(() => db.getShortcuts().then(setShortcuts))
+                    });
+                  }}
+                  className="text-[9px] font-bold text-slate-400 hover:text-red-500 uppercase flex items-center gap-1 transition-colors"
+                >
                    <RefreshCcw size={12} /> Reset
                 </button>
              </div>
@@ -219,7 +328,7 @@ const Settings: React.FC = () => {
                   <div className="relative">
                     <input 
                       type={showPass ? "text" : "password"} 
-                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-bold focus:border-[#14452F] transition-all" 
+                      className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-bold transition-all focus:border-[#14452F] ${passwords.next && passwords.confirm && passwords.next !== passwords.confirm ? 'border-red-300' : ''}`} 
                       value={passwords.next} 
                       onChange={e => setPasswords({...passwords, next: e.target.value})} 
                     />
@@ -232,13 +341,20 @@ const Settings: React.FC = () => {
                   <label className="text-[9px] font-bold text-slate-400 uppercase ml-1">Xác nhận lại</label>
                   <input 
                     type={showPass ? "text" : "password"} 
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-bold focus:border-[#14452F] transition-all" 
+                    className={`w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-bold transition-all focus:border-[#14452F] ${passwords.next && passwords.confirm && passwords.next !== passwords.confirm ? 'border-red-300' : ''}`} 
                     value={passwords.confirm} 
                     onChange={e => setPasswords({...passwords, confirm: e.target.value})} 
                   />
                </div>
             </div>
-            <button onClick={handleUpdatePassword} className="mt-4 px-6 py-2.5 bg-[#14452F] text-white rounded-xl font-bold uppercase text-[10px] tracking-widest shadow-md hover:bg-green-800 transition-all active:scale-95">
+            {passwords.next && passwords.confirm && passwords.next !== passwords.confirm && (
+              <p className="text-[10px] text-red-500 font-bold uppercase mt-2">Mật khẩu nhập lại chưa khớp</p>
+            )}
+            <button 
+              onClick={handleUpdatePassword} 
+              className="mt-4 px-6 py-2.5 bg-[#14452F] text-white rounded-xl font-bold uppercase text-[10px] tracking-widest shadow-md hover:bg-green-800 transition-all active:scale-95 disabled:opacity-50"
+              disabled={!passwords.next || passwords.next !== passwords.confirm}
+            >
                Cập nhật mật khẩu quản trị
             </button>
           </div>
@@ -316,7 +432,20 @@ const Settings: React.FC = () => {
                 </button>
 
                 <button 
-                   onClick={async () => { if(confirm("CẢNH BÁO NGUY HIỂM:\n\nBạn có chắc chắn muốn xóa sạch toàn bộ dữ liệu (nhân sự, đơn vị, lịch sử)?\nThao tác này KHÔNG THỂ khôi phục.")) { await db.clearDatabase(); window.location.reload(); } }} 
+                   onClick={() => {
+                     setModal({
+                       isOpen: true,
+                       type: 'danger',
+                       title: 'CẢNH BÁO NGUY HIỂM',
+                       message: 'Bạn có chắc chắn muốn XÓA SẠCH toàn bộ dữ liệu hệ thống (nhân sự, đơn vị, nhật ký)? Thao tác này không thể khôi phục.',
+                       confirmText: 'Xác nhận xóa sạch',
+                       onConfirm: async () => {
+                         await db.clearDatabase();
+                         addToast("Đã xóa toàn bộ cơ sở dữ liệu", "success");
+                         setTimeout(() => window.location.reload(), 1000);
+                       }
+                     });
+                   }}
                    className="w-full flex items-center justify-between p-3 bg-red-50/50 border border-red-100 rounded-xl hover:bg-red-100 transition-all group mt-4"
                 >
                    <div className="flex items-center gap-3">
@@ -351,7 +480,7 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
-      {/* --- MODAL CẬP NHẬT PHIÊN BẢN (NÂNG CẤP GIAO DIỆN) --- */}
+      {/* --- MODAL CẬP NHẬT PHIÊN BẢN --- */}
       {showUpdateModal && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in no-print">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-200 animate-slide-up">
@@ -379,7 +508,7 @@ const Settings: React.FC = () => {
                    <div>
                       <h4 className="text-[11px] font-black text-red-800 uppercase mb-1">Cảnh báo quan trọng</h4>
                       <p className="text-xs text-red-700/80 leading-relaxed font-medium">
-                         Trước khi thực hiện cập nhật, hãy chắc chắn bạn đã <strong>SAO LƯU DỮ LIỆU</strong> (Database Backup). Quá trình này có thể ảnh hưởng đến dữ liệu hiện tại.
+                         Trước khi thực hiện cập nhật, hãy chắc chắn bạn đã <strong>SAO LƯU DỮ LIỆU</strong>. Quá trình này có thể ảnh hưởng đến dữ liệu hiện tại.
                       </p>
                    </div>
                 </div>
@@ -395,7 +524,7 @@ const Settings: React.FC = () => {
                       <div className="w-6 h-6 rounded-full bg-green-50 text-green-600 flex items-center justify-center shrink-0">
                          <CheckCircle2 size={12} />
                       </div>
-                      <p className="text-[11px] font-bold text-slate-600">Bạn sẽ cần chọn file cập nhật định dạng <strong>.exe</strong></p>
+                      <p className="text-[11px] font-bold text-slate-600">Chọn file cài đặt định dạng <strong>.exe</strong></p>
                    </div>
                 </div>
 
@@ -406,7 +535,7 @@ const Settings: React.FC = () => {
                       className="w-full py-4 bg-[#14452F] text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-green-800 active:scale-95 transition-all flex items-center justify-center gap-3"
                    >
                       {isUpdating ? <RefreshCcw size={16} className="animate-spin" /> : <FileDown size={18} />}
-                      Tiếp tục chọn file cập nhật
+                      Chọn file cập nhật
                    </button>
                    <button 
                       disabled={isUpdating}
@@ -417,12 +546,6 @@ const Settings: React.FC = () => {
                    </button>
                 </div>
              </div>
-
-             <div className="bg-slate-50 p-4 text-center border-t border-slate-100">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center justify-center gap-2">
-                   <ShieldCheck size={10} /> Secure Update Protocol Enabled
-                </p>
-             </div>
           </div>
         </div>
       )}
@@ -430,9 +553,10 @@ const Settings: React.FC = () => {
       <style>{`
         .animate-fade-in { animation: fadeIn 0.4s ease-out; }
         .animate-slide-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        .animate-slide-left { animation: slideLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        @keyframes slideLeft { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
         .animate-spin-slow { animation: spin 3s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>

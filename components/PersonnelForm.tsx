@@ -274,6 +274,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
         try {
             showToast('info', 'XỬ LÝ', 'Đang tạo ảnh thu nhỏ...');
             const thumb = await createThumbnail(base64, 200);
+            const optimizedMain = await createThumbnail(base64, 800);
             setFormData(prev => ({ ...prev, anh_dai_dien: base64, anh_thumb: thumb }));
             showToast('success', 'XONG', 'Đã cập nhật ảnh.');
         } catch {
@@ -285,19 +286,31 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
   };
 
   const updateNested = (path: string, value: any) => {
-    if (isViewMode) return;
-    setFormData(prev => {
-      const updated = JSON.parse(JSON.stringify(prev));
-      const keys = path.split('.');
-      let current: any = updated;
-      for (let i = 0; i < keys.length - 1; i++) {
-        if (!current[keys[i]]) current[keys[i]] = {}; 
-        current = current[keys[i]];
-      }
-      current[keys[keys.length - 1]] = value;
-      return updated;
-    });
-  };
+  if (isViewMode) return;
+  
+  setFormData(prev => {
+    // SỬA: Dùng Shallow Copy đệ quy thay vì JSON.parse/stringify
+    // Hoặc đơn giản hơn với Spread operator cho các trường hợp cụ thể
+    
+    // Cách fix nhanh nhất mà vẫn an toàn (nhưng vẫn còn chậm với JSON):
+    // Tốt nhất là tách logic ảnh ra khỏi logic text, nhưng để fix nhanh:
+    
+    const newState = { ...prev }; // Shallow copy cấp 1
+    const keys = path.split('.');
+    
+    // Logic cập nhật an toàn hơn
+    let current: any = newState;
+    for (let i = 0; i < keys.length - 1; i++) {
+        const key = keys[i];
+        // Tạo copy cho level tiếp theo để đảm bảo tính immutability (cơ bản)
+        current[key] = { ...current[key] }; 
+        current = current[key];
+    }
+    current[keys[keys.length - 1]] = value;
+    
+    return newState;
+  });
+};
 
   const addRow = (path: string, item: any) => {
     if(isViewMode) return;

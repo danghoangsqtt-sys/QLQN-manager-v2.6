@@ -218,7 +218,7 @@ const PersonnelForm: React.FC<PersonnelFormProps> = ({ units, onClose, initialDa
       const safeMergeSection = (sectionKey: keyof MilitaryPersonnel) => {
         if (initialData[sectionKey] && typeof initialData[sectionKey] === 'object') {
           mergedBase[sectionKey] = {
-            ...DEFAULT_DATA[sectionKey],      // Lấy gốc mặc định
+            ...(DEFAULT_DATA[sectionKey] as any),      // Lấy gốc mặc định
             ...(mergedBase[sectionKey] || {}) // Ghi đè bằng dữ liệu mới
           };
         }

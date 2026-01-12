@@ -36,9 +36,16 @@ const ITEMS_PER_PAGE = 25;
 const DEFAULT_FILTERS: FilterCriteria = {
   keyword: '', unitId: 'all', rank: 'all',
   political: 'all', security: 'all', 
-  education: 'all', marital: 'all',
+  educationLevel: 'all', marital: 'all',
   ethnicity: 'all', religion: 'all', hometown: '', ageRange: 'all',
-  sortBy: 'none'
+  sortBy: 'none',
+  
+  // --- BỔ SUNG CÁC TRƯỜNG CÒN THIẾU ---
+  professional: 'all',  // Trình độ chuyên môn
+  economic: 'all',      // Hoàn cảnh kinh tế
+  talent: '',           // Năng khiếu (kiểu string)
+  health: 'all',        // Phân loại sức khỏe
+  business: 'all'       // Tình trạng kinh doanh
 };
 
 const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
@@ -163,7 +170,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     let count = 0;
     if (filters.rank !== 'all') count++;
     if (filters.political !== 'all') count++;
-    if (filters.education !== 'all') count++;
+    if (filters.educationLevel !== 'all') count++;
     if (filters.marital !== 'all') count++;
     if (filters.ethnicity !== 'all') count++;
     if (filters.ageRange !== 'all') count++;
@@ -410,7 +417,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                     </div>
                     {filters.rank !== 'all' && <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[9px] font-bold border border-blue-100">Bậc: {filters.rank}</span>}
                     {filters.political !== 'all' && <span className="px-2 py-0.5 bg-red-50 text-red-700 rounded-full text-[9px] font-bold border border-red-100">Chính trị: {filters.political}</span>}
-                    {filters.education !== 'all' && <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-[9px] font-bold border border-purple-100">Học vấn: {filters.education}</span>}
+                    {filters.educationLevel !== 'all' && <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-[9px] font-bold border border-purple-100">Học vấn: {filters.educationLevel}</span>}
                     {filters.marital !== 'all' && <span className="px-2 py-0.5 bg-pink-50 text-pink-700 rounded-full text-[9px] font-bold border border-pink-100">GĐ: {filters.marital}</span>}
                     {filters.security !== 'all' && <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-[9px] font-bold border border-amber-100">An ninh: {filters.security}</span>}
                     {filters.hometown !== '' && <span className="px-2 py-0.5 bg-slate-50 text-slate-700 rounded-full text-[9px] font-bold border border-slate-200">Quê: {filters.hometown}</span>}
@@ -437,7 +444,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                         </div>
                         <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-400 uppercase">Trình độ Học vấn</label>
-                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none" value={filters.education} onChange={e => setFilters({...filters, education: e.target.value as any})}>
+                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none" value={filters.educationLevel} onChange={e => setFilters({...filters, educationLevel: e.target.value as any})}>
                                 <option value="all">Tất cả</option>
                                 <option value="dai_hoc_cao_dang">Đại học / Cao đẳng / Thạc sĩ</option>
                                 <option value="12_12">Tốt nghiệp 12/12</option>

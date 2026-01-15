@@ -71,14 +71,11 @@ ipcMain.handle('system:updateFromFile', async () => {
 
   try {
     // Mở file setup mới
-    await shell.openPath(installerPath);
+    shell.openPath(installerPath);
     
     // Đợi 3s để file setup kịp khởi chạy rồi đóng App hiện tại
-    setTimeout(() => {
-      app.quit();
-    }, 3000);
+    return { success: true, message: 'Đã mở bộ cài đặt. Vui lòng đóng ứng dụng này để tiến hành cập nhật.' };
 
-    return { success: true, message: 'Đang khởi chạy bộ cài đặt, ứng dụng sẽ tự tắt sau 3 giây...' };
   } catch (error) {
     return { success: false, message: 'Lỗi khi mở file: ' + error.message };
   }

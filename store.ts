@@ -135,12 +135,18 @@ class Store {
         collection = collection.filter(p => this.hasSecurityAlert(p));
     }
 
-    if (filters.education === 'dai_hoc_cao_dang') {
-      collection = collection.filter(p => {
+    if (filters.educationLevel && filters.educationLevel !== 'all') { // Đổi tên thành educationLevel
+    if (filters.educationLevel === 'khac') { 
+     // Logic cho trình độ ĐH/CĐ/Khác (tùy quy ước của bạn với UI)
+     collection = collection.filter(p => {
         const edu = (p.trinh_do_van_hoa || '').toLowerCase();
         return edu.includes('đại học') || edu.includes('cao đẳng') || edu.includes('thạc sĩ');
       });
-    }
+  } else {
+     // Logic cho 12/12 hoặc 9/12
+     collection = collection.filter(p => p.trinh_do_van_hoa === filters.educationLevel);
+  }
+}
 
     // Bảo vệ hiệu năng: Giới hạn số lượng bản ghi nếu không có bộ lọc cụ thể
     if (!filters.keyword && (!filters.unitId || filters.unitId === 'all') && !filters.rank && !filters.security) {

@@ -10,7 +10,7 @@ import {
   FileText, MapPin, ChevronLeft, ChevronRight,
   FileEdit, AlertTriangle, CheckCircle2, X, Info, Loader2,
   RefreshCcw, FilterX, UserCheck, Heart, PlaneTakeoff, Wallet,
-  UserRoundCheck, Tags
+  UserRoundCheck, Tags, Sparkles, BrainCircuit
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { MilitaryPersonnel, Unit } from '../types';
@@ -36,16 +36,9 @@ const ITEMS_PER_PAGE = 25;
 const DEFAULT_FILTERS: FilterCriteria = {
   keyword: '', unitId: 'all', rank: 'all',
   political: 'all', security: 'all', 
-  educationLevel: 'all', marital: 'all',
+  education: 'all', marital: 'all',
   ethnicity: 'all', religion: 'all', hometown: '', ageRange: 'all',
-  sortBy: 'none',
-  
-  // --- BỔ SUNG CÁC TRƯỜNG CÒN THIẾU ---
-  professional: 'all',  // Trình độ chuyên môn
-  economic: 'all',      // Hoàn cảnh kinh tế
-  talent: '',           // Năng khiếu (kiểu string)
-  health: 'all',        // Phân loại sức khỏe
-  business: 'all'       // Tình trạng kinh doanh
+  sortBy: 'none'
 };
 
 const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
@@ -61,6 +54,11 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+
+  // AI Analysis States
+  const [aiAnalysisResult, setAiAnalysisResult] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzingPerson, setAnalyzingPerson] = useState<MilitaryPersonnel | null>(null);
 
   // Stats
   const [dashboardStats, setDashboardStats] = useState<any>(null);
@@ -134,6 +132,27 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     }
   };
 
+  const handleAIAnalysis = async (person: MilitaryPersonnel) => {
+    setAnalyzingPerson(person);
+    setIsAnalyzing(true);
+    setAiAnalysisResult(null);
+    addToast(`Đang sử dụng AI phân tích hồ sơ ${person.ho_ten}...`, "info");
+    
+    try {
+        const fullInfo = await db.getPersonnelById(person.id);
+        if (fullInfo) {
+            // Đã sửa: db bây giờ chắc chắn có phương thức analyzePersonnelAI
+            const result = await db.analyzePersonnelAI(fullInfo);
+            setAiAnalysisResult(result);
+        }
+    } catch (error) {
+        console.error(error);
+        addToast("Lỗi phân tích AI", "error");
+    } finally {
+        setIsAnalyzing(false);
+    }
+  };
+
   const handleExportCSV = () => {
     try {
         exportPersonnelToCSV(personnel, `Danh_sach_quan_nhan_${new Date().getTime()}.xls`);
@@ -165,12 +184,11 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
   const totalPages = Math.ceil(personnel.length / ITEMS_PER_PAGE);
 
-  // Tính số lượng bộ lọc đang hoạt động (trừ mặc định)
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (filters.rank !== 'all') count++;
     if (filters.political !== 'all') count++;
-    if (filters.educationLevel !== 'all') count++;
+    if (filters.education !== 'all') count++;
     if (filters.marital !== 'all') count++;
     if (filters.ethnicity !== 'all') count++;
     if (filters.ageRange !== 'all') count++;
@@ -224,6 +242,63 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     <div className="h-screen bg-[#F0F2F5] flex font-sans text-slate-800 overflow-hidden relative text-sm">
       
       <ProfilePrintTemplate data={printingPerson} />
+
+      {/* AI ANALYSIS MODAL */}
+      {(isAnalyzing || aiAnalysisResult) && analyzingPerson && (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fade-in no-print">
+            <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+                <div className="bg-[#14452F] p-6 text-white flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center">
+                            <BrainCircuit size={28} className="text-amber-400 animate-pulse" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-black uppercase tracking-tight">AI Insight - Phân tích hồ sơ</h3>
+                            <p className="text-[10px] text-white/60 font-bold uppercase">Quân nhân: {analyzingPerson.ho_ten}</p>
+                        </div>
+                    </div>
+                    {!isAnalyzing && (
+                        <button onClick={() => { setAiAnalysisResult(null); setAnalyzingPerson(null); }} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X size={20}/></button>
+                    )}
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-slate-50/30">
+                    {isAnalyzing ? (
+                        <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-4">
+                            <Loader2 size={48} className="animate-spin text-green-700" />
+                            <div className="text-center">
+                                <p className="text-sm font-black uppercase tracking-widest text-[#14452F]">Hệ thống đang tư duy...</p>
+                                <p className="text-[10px] font-bold mt-1 uppercase opacity-60">Đang đánh giá rủi ro an ninh và tiềm năng công tác</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="animate-fade-in prose prose-slate max-w-none">
+                            <div className="flex items-center gap-2 mb-6 p-4 bg-amber-50 rounded-2xl border border-amber-100 text-amber-800 shadow-sm">
+                                <Sparkles size={18} className="shrink-0 text-amber-500" />
+                                <p className="text-xs font-bold uppercase tracking-tight">Báo cáo phân tích tự động dựa trên dữ liệu hiện có</p>
+                            </div>
+                            <div className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap font-medium p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                {aiAnalysisResult}
+                            </div>
+                            <div className="mt-6 flex items-center gap-2 p-3 bg-blue-50 text-blue-800 rounded-xl text-[10px] font-bold uppercase border border-blue-100">
+                                <Info size={14} /> Lưu ý: Báo cáo AI chỉ mang tính chất tham khảo, Chỉ huy cần đối soát thực tế.
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-6 bg-white border-t flex justify-end">
+                    <button 
+                        disabled={isAnalyzing}
+                        onClick={() => { setAiAnalysisResult(null); setAnalyzingPerson(null); }} 
+                        className="px-8 py-3 bg-[#14452F] text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg hover:bg-green-800 transition-all active:scale-95"
+                    >
+                        Đã xác nhận báo cáo
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* TOASTS HUD */}
       <div className="fixed top-6 right-6 z-[1000] flex flex-col gap-3 no-print">
@@ -417,7 +492,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                     </div>
                     {filters.rank !== 'all' && <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[9px] font-bold border border-blue-100">Bậc: {filters.rank}</span>}
                     {filters.political !== 'all' && <span className="px-2 py-0.5 bg-red-50 text-red-700 rounded-full text-[9px] font-bold border border-red-100">Chính trị: {filters.political}</span>}
-                    {filters.educationLevel !== 'all' && <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-[9px] font-bold border border-purple-100">Học vấn: {filters.educationLevel}</span>}
+                    {filters.education !== 'all' && <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-[9px] font-bold border border-purple-100">Học vấn: {filters.education}</span>}
                     {filters.marital !== 'all' && <span className="px-2 py-0.5 bg-pink-50 text-pink-700 rounded-full text-[9px] font-bold border border-pink-100">GĐ: {filters.marital}</span>}
                     {filters.security !== 'all' && <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-[9px] font-bold border border-amber-100">An ninh: {filters.security}</span>}
                     {filters.hometown !== '' && <span className="px-2 py-0.5 bg-slate-50 text-slate-700 rounded-full text-[9px] font-bold border border-slate-200">Quê: {filters.hometown}</span>}
@@ -428,7 +503,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               {showAdvancedFilter && (
                 <div className="bg-white p-6 rounded-xl border border-green-100 shadow-lg animate-slide-down">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                    {/* Cột 1: Chính trị & Học vấn */}
+                    {/* Cột 1: Chính trị & Học văn */}
                     <div className="space-y-4">
                         <div className="flex items-center gap-2 text-[#14452F] font-bold mb-2">
                             <UserCheck size={14}/> <span className="text-[10px] uppercase tracking-wider">Chính trị & Văn hóa</span>
@@ -444,7 +519,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                         </div>
                         <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-400 uppercase">Trình độ Học vấn</label>
-                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none" value={filters.educationLevel} onChange={e => setFilters({...filters, educationLevel: e.target.value as any})}>
+                            <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none" value={filters.education} onChange={e => setFilters({...filters, education: e.target.value as any})}>
                                 <option value="all">Tất cả</option>
                                 <option value="dai_hoc_cao_dang">Đại học / Cao đẳng / Thạc sĩ</option>
                                 <option value="12_12">Tốt nghiệp 12/12</option>
@@ -455,7 +530,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                         </div>
                     </div>
 
-                    {/* Cột 2: Hôn nhân & Hoàn cảnh (SỬA LỖI VÀ NÂNG CẤP) */}
+                    {/* Cột 2: Hôn nhân & Hoàn cảnh */}
                     <div className="space-y-4">
                         <div className="flex items-center gap-2 text-pink-600 font-bold mb-2">
                             <Heart size={14}/> <span className="text-[10px] uppercase tracking-wider">Hôn nhân & Hoàn cảnh</span>
@@ -472,7 +547,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                             </select>
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase">Dân tộc & Tôn giáo</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase">Dân tộc</label>
                             <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none" value={filters.ethnicity} onChange={e => setFilters({...filters, ethnicity: e.target.value as any})}>
                                 <option value="all">Tất cả dân tộc</option>
                                 <option value="kinh">Người Kinh</option>
@@ -590,6 +665,14 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                       </div>
 
                       <div className="flex gap-1 shrink-0 opacity-80 group-hover:opacity-100">
+                          <button 
+                            onClick={() => handleAIAnalysis(p)}
+                            className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-all" 
+                            title="Phân tích AI"
+                          >
+                            <BrainCircuit size={18} />
+                          </button>
+
                           <button 
                             onClick={async () => { 
                               const fullInfo = await db.getPersonnelById(p.id);

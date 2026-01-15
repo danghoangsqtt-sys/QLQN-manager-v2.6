@@ -24,7 +24,7 @@ const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
   cap_bac: 'Binh nhì', chuc_vu: '', don_vi_id: '',
   nhap_ngu_ngay: '', ngay_vao_doan: '', vao_dang_ngay: '',
   ho_khau_thu_tru: '', noi_sinh: '', dan_toc: 'Kinh', ton_giao: 'Không',
-  
+ 
   // @ts-ignore
   que_quan: '', 
   trinh_do_van_hoa: '12/12', 
@@ -91,6 +91,8 @@ const DEFAULT_DATA: Partial<MilitaryPersonnel> = {
   y_kien_nguyen_vong: ''
 };
 
+const DAN_TOC_LIST = ['Kinh', 'Tày', 'Thái', 'Mường', 'Khmer', 'Hoa', 'Nùng', 'H\'Mông', 'Dao', 'Gia Rai', 'Ê Đê', 'Ba Na', 'Xơ Đăng', 'Sán Chay', 'Cơ Ho', 'Chăm', 'Sán Dìu', 'Hrê'];
+const TON_GIAO_LIST = ['Không', 'Phật giáo', 'Công giáo (Thiên Chúa)', 'Tin Lành', 'Cao Đài', 'Hòa Hảo', 'Hồi giáo', 'Bà-la-môn'];
 // --- HELPER FUNCTIONS ---
 const toDisplayDate = (isoDate: string | undefined) => {
   if (!isoDate) return '';
@@ -530,12 +532,43 @@ const updateNested = (path: string, value: any) => {
                              {/* @ts-ignore */}
                              <input className={inputBase} value={formData.que_quan || ''} onChange={e => setFormData({...formData, que_quan: e.target.value})} disabled={isViewMode} placeholder="Xã/Phường - Huyện/Quận - Tỉnh/Thành phố" />
                         </div>
-
+                        
+                        
                         <div className="col-span-3">
                              <label className={labelBase}>Hộ khẩu thường trú</label>
                              <input className={inputBase} value={formData.ho_khau_thu_tru} onChange={e => setFormData({...formData, ho_khau_thu_tru: e.target.value})} disabled={isViewMode} placeholder="Thôn/Xóm - Xã/Phường - Huyện/Quận - Tỉnh/Thành phố" />
                         </div>
-
+                        
+                        <div className="col-span-3 grid grid-cols-2 gap-4">
+                            <div>
+                                <label className={labelBase}>Dân tộc <span className="text-red-500">*</span></label>
+                                <input 
+                                    className={inputBase} 
+                                    list="list-dantoc" 
+                                    value={formData.dan_toc} 
+                                    onChange={e => setFormData({...formData, dan_toc: e.target.value})} 
+                                    disabled={isViewMode}
+                                    placeholder="Chọn hoặc nhập..."
+                                />
+                                <datalist id="list-dantoc">
+                                    {DAN_TOC_LIST.map(dt => <option key={dt} value={dt} />)}
+                                </datalist>
+                            </div>
+                            <div>
+                                <label className={labelBase}>Tôn giáo</label>
+                                <input 
+                                    className={inputBase} 
+                                    list="list-tongiao" 
+                                    value={formData.ton_giao} 
+                                    onChange={e => setFormData({...formData, ton_giao: e.target.value})} 
+                                    disabled={isViewMode}
+                                    placeholder="Chọn hoặc nhập..."
+                                />
+                                <datalist id="list-tongiao">
+                                    {TON_GIAO_LIST.map(tg => <option key={tg} value={tg} />)}
+                                </datalist>
+                            </div>
+                        </div>
                         <div className="col-span-3 grid grid-cols-4 gap-4 p-5 bg-green-50/30 rounded-xl border border-green-100">
                              <div className="col-span-2">
                                  <label className={labelBase}>Đơn vị quản lý <span className="text-red-500">*</span></label>

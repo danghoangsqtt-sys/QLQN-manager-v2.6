@@ -11,7 +11,7 @@ export interface FilterCriteria {
   // Update khớp với utils
   political: 'all' | 'dang_vien' | 'doan_vien' | 'quan_chung';
   educationLevel: 'all' | '12_12' | '9_12' | 'khac'; // Đổi tên thành educationLevel
-  
+  religion: 'all' | 'khong' | 'co_ton_giao' | 'phat_giao' | 'thien_chua';
   // Các trường khác nên khớp, nhưng quan trọng nhất là 2 trường trên để fix lỗi build
   security: any; // Để any hoặc định nghĩa khớp hoàn toàn với utils để tránh lỗi lặt vặt
   [key: string]: any; // Cho phép mở rộng để tránh lỗi thiếu field
@@ -107,6 +107,7 @@ class Store {
   async getPersonnel(filters: Partial<FilterCriteria> = {}): Promise<MilitaryPersonnel[]> {
     let collection = dbInstance.personnel.toCollection();
 
+    // 1. Lọc theo từ khóa (Keyword)
     if (filters.keyword) {
       const k = filters.keyword.toLowerCase();
       collection = collection.filter(p => 
@@ -116,39 +117,63 @@ class Store {
       );
     }
 
+    // 2. Lọc theo Đơn vị (Unit)
     if (filters.unitId && filters.unitId !== 'all') {
       const allTargetIds = await this.getAllChildUnitIds(filters.unitId);
       collection = collection.filter(p => allTargetIds.includes(p.don_vi_id));
     }
 
+    // 3. Lọc theo Cấp bậc (Rank)
     if (filters.rank && filters.rank !== 'all') {
       collection = collection.filter(p => p.cap_bac === filters.rank);
     }
 
+    // 4. Lọc Chính trị (Political)
     if (filters.political === 'dang_vien') {
       collection = collection.filter(p => !!p.vao_dang_ngay);
     } else if (filters.political === 'quan_chung') {
       collection = collection.filter(p => !p.vao_dang_ngay);
     }
 
+    // 5. Lọc Học vấn (Education)
+    if (filters.education === 'dai_hoc_cao_dang') { // Sửa lại tên field cho khớp với interface nếu cần
+      collection = collection.filter(p => {
+        const edu = (p.trinh_do_van_hoa || '').toLowerCase();
+        return edu.includes('đại học') || edu.includes('cao đẳng') || edu.includes('thạc sĩ');
+      });
+    }
+
+    // --- [NÂNG CẤP] 6. LỌC DÂN TỘC (Ethnicity) ---
+    if (filters.ethnicity && filters.ethnicity !== 'all') {
+        collection = collection.filter(p => {
+            const dt = (p.dan_toc || '').toLowerCase().trim();
+            if (filters.ethnicity === 'kinh') return dt === 'kinh';
+            if (filters.ethnicity === 'dan_toc_thieu_so') return dt !== 'kinh' && dt !== '';
+            return true;
+        });
+    }
+
+    // --- [NÂNG CẤP] 7. LỌC TÔN GIÁO (Religion) ---
+    if (filters.religion && filters.religion !== 'all') {
+        collection = collection.filter(p => {
+            const tg = (p.ton_giao || '').toLowerCase().trim();
+            const khongTonGiao = tg === '' || tg === 'không' || tg === 'không có';
+
+            if (filters.religion === 'khong') return khongTonGiao;
+            if (filters.religion === 'co_ton_giao') return !khongTonGiao;
+            if (filters.religion === 'phat_giao') return tg.includes('phật');
+            if (filters.religion === 'thien_chua') return tg.includes('thiên chúa') || tg.includes('công giáo') || tg.includes('kito');
+            
+            return true;
+        });
+    }
+
+    // 8. Lọc An ninh (Security)
     if (filters.security === 'canh_bao') {
         collection = collection.filter(p => this.hasSecurityAlert(p));
     }
 
-    if (filters.educationLevel && filters.educationLevel !== 'all') { // Đổi tên thành educationLevel
-    if (filters.educationLevel === 'khac') { 
-     // Logic cho trình độ ĐH/CĐ/Khác (tùy quy ước của bạn với UI)
-     collection = collection.filter(p => {
-        const edu = (p.trinh_do_van_hoa || '').toLowerCase();
-        return edu.includes('đại học') || edu.includes('cao đẳng') || edu.includes('thạc sĩ');
-      });
-  } else {
-     // Logic cho 12/12 hoặc 9/12
-     collection = collection.filter(p => p.trinh_do_van_hoa === filters.educationLevel);
-  }
-}
-
-    // Bảo vệ hiệu năng: Giới hạn số lượng bản ghi nếu không có bộ lọc cụ thể
+    // Giới hạn kết quả để tối ưu hiệu năng
     if (!filters.keyword && (!filters.unitId || filters.unitId === 'all') && !filters.rank && !filters.security) {
         collection = collection.limit(5000);
     }

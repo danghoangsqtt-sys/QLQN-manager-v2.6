@@ -9,7 +9,7 @@ export interface FilterCriteria {
   education: 'all' | 'dai_hoc_cao_dang' | '12_12' | 'duoi_12' | 'da_tot_nghiep' | 'chua_tot_nghiep';
   marital: 'all' | 'da_vo' | 'chua_vo' | 'co_con' | 'co_nguoi_yeu' | 'hoan_canh_dac_biet';
   ethnicity: 'all' | 'kinh' | 'dan_toc_thieu_so';
-  religion: 'all' | 'khong' | 'co_ton_giao';
+  religion: 'all' | 'khong' | 'co_ton_giao' | 'phat_giao' | 'thien_chua';
   ageRange: 'all' | '18_25' | '26_30' | '31_40' | 'tren_40';
   hometown: string;
   security: 'all' | 'canh_bao' | 'an_toan' | 'vay_no' | 'vay_no_gia_dinh_khong_biet' | 'vi_pham_ky_luat' | 'ma_tuy' | 'danh_bac' | 'nuoc_ngoai' | 'ho_chieu' | 'dang_lam_dinh_cu';
